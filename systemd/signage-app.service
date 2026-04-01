@@ -1,0 +1,25 @@
+[Unit]
+Description=RPi Signage — Flask backend
+After=network.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=dev
+Group=dev
+WorkingDirectory=/home/dev/signage
+ExecStart=/home/dev/signage/venv/bin/python server.py
+Restart=always
+RestartSec=5
+
+# Credentials — override via /etc/systemd/system/signage-app.service.d/credentials.conf
+# Environment=SIGNAGE_USER=admin
+# Environment=SIGNAGE_PASS=changeme
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=signage-app
+
+[Install]
+WantedBy=multi-user.target

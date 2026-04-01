@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <title>{{ site_title }} — Setup</title>
+  <link rel="icon" href="/favicon.ico">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:      #111;
+      --surface: #1c1c1c;
+      --card:    #1a1a1a;
+      --border:  #2e2e2e;
+      --accent:  #e8a020;
+      --text:    #e0e0e0;
+      --muted:   #777;
+      --danger:  #c0392b;
+      --ok:      #27ae60;
+      --r:       8px;
+      --gap:     16px;
+    }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 16px;
+      line-height: 1.5;
+      padding: var(--gap);
+      max-width: 680px;
+      margin: 0 auto;
+    }
+
+    h1 { font-size: 1.2rem; font-weight: 600; color: var(--accent);
+         margin-bottom: 20px; letter-spacing: 0.05em; }
+    h2 { font-size: 0.72rem; font-weight: 600; text-transform: uppercase;
+         letter-spacing: 0.12em; color: var(--muted); margin-bottom: 10px; }
+
+    .section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: var(--gap);
+      margin-bottom: var(--gap);
+    }
+
+    .row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+    .row:last-child { margin-bottom: 0; }
+    .row-label { font-size: 0.85rem; width: 65px; flex-shrink: 0; }
+    .row input[type="text"] {
+      flex: 1; background: var(--card); border: 1px solid var(--border);
+      border-radius: 4px; color: var(--text);
+      font-size: 0.9rem; padding: 5px 8px; font-family: inherit;
+    }
+    .row input[type="text"]:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+    .row input[type="file"] {
+      flex: 1; min-width: 0; background: var(--card); border: 1px solid var(--border);
+      border-radius: 4px; color: var(--text); padding: 5px 8px;
+      font-family: inherit; font-size: 0.82rem;
+    }
+
+    .btn {
+      display: block; width: 100%;
+      padding: 14px 10px;
+      background: #2a2a2a;
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      color: var(--text);
+      font-size: 1.1rem;
+      font-family: inherit;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn:active { background: #3a3a3a; }
+    .btn-primary { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 600; }
+    .btn-primary:active { background: #c88010; }
+    .btn-sm { display: inline-block; width: auto; padding: 5px 10px; font-size: 0.82rem; }
+
+    .status { font-size: 0.8rem; margin-top: 8px; min-height: 1em; color: var(--muted); }
+    .status.ok  { color: var(--ok); }
+    .status.err { color: var(--danger); }
+
+    .preview {
+      margin-top: 12px; text-align: center;
+    }
+    #logo-preview {
+      max-height: 80px; max-width: 200px;
+      object-fit: contain; border-radius: 4px;
+      display: none;
+    }
+
+    .back { font-size: 0.82rem; color: var(--muted); margin-bottom: 16px; display: block; }
+    .back a { color: var(--accent); text-decoration: none; }
+  </style>
+</head>
+<body>
+
+<h1>Setup</h1>
+<span class="back"><a href="/admin">&larr; Back to Admin</a></span>
+
+<!-- Site title -->
+<div class="section">
+  <h2>Site Title</h2>
+  <div class="row">
+    <span class="row-label">Title</span>
+    <input type="text" id="title-input" placeholder="Signage" maxlength="100"
+      onkeydown="if(event.key==='Enter'){saveTitle();this.blur();}">
+    <button class="btn btn-primary btn-sm" onclick="saveTitle()">Save</button>
+  </div>
+  <div id="title-status" class="status"></div>
+</div>
+
+<!-- Logo -->
+<div class="section">
+  <h2>Logo</h2>
+  <div class="row">
+    <span class="row-label">File</span>
+    <input type="file" id="logo-input" accept="image/*">
+    <button class="btn btn-primary btn-sm" onclick="uploadLogo()">Upload</button>
+  </div>
+  <div id="logo-status" class="status"></div>
+  <div class="preview">
+    <img id="logo-preview" src="/branding/logo" alt=""
+      onload="this.style.display='inline-block'"
+      onerror="this.style.display='none'">
+  </div>
+</div>
+
+<script>
+'use strict';
+
+async function loadSettings() {
+  try {
+    const s = await (await fetch('/api/settings')).json();
+    document.getElementById('title-input').value = s.site_title || 'Signage';
+  } catch (_) {}
+}
+
+async function saveTitle() {
+  const val = document.getElementById('title-input').value.trim() || 'Signage';
+  document.getElementById('title-input').value = val;
+  const el = document.getElementById('title-status');
+  try {
+    const r = await fetch('/api/settings', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ site_title: val }),
+    });
+    el.textContent = r.ok ? 'Saved.' : 'Save failed.';
+    el.className   = 'status ' + (r.ok ? 'ok' : 'err');
+  } catch (_) { el.textContent = 'Save failed.'; el.className = 'status err'; }
+}
+
+async function uploadLogo() {
+  const input    = document.getElementById('logo-input');
+  const statusEl = document.getElementById('logo-status');
+  if (!input.files.length) { statusEl.textContent = 'No file selected.'; statusEl.className = 'status err'; return; }
+  const form = new FormData();
+  form.append('logo', input.files[0]);
+  statusEl.textContent = 'Uploading\u2026'; statusEl.className = 'status';
+  try {
+    const r = await fetch('/api/branding/logo', { method: 'POST', body: form });
+    if (r.ok) {
+      statusEl.textContent = 'Logo updated.'; statusEl.className = 'status ok';
+      const preview = document.getElementById('logo-preview');
+      preview.src = '/branding/logo?t=' + Date.now();
+      preview.style.display = 'inline-block';
+      input.value = '';
+    } else {
+      statusEl.textContent = 'Upload failed.'; statusEl.className = 'status err';
+    }
+  } catch (_) { statusEl.textContent = 'Upload failed.'; statusEl.className = 'status err'; }
+}
+
+loadSettings();
+</script>
+</body>
+</html>

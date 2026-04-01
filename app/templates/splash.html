@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>{{ site_title }}</title>
+  <link rel="icon" href="/favicon.ico">
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; cursor: none; }
+    html, body {
+      width: 100vw; height: 100vh;
+      background: #000;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      font-family: system-ui, -apple-system, sans-serif;
+      color: #e0e0e0;
+      overflow: hidden;
+    }
+
+    #content {
+      text-align: center;
+      opacity: 0;
+      transition: opacity 0.4s ease;
+    }
+    #content.visible { opacity: 1; }
+
+    .label {
+      font-size: 1rem;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: #555;
+      margin-bottom: 10px;
+    }
+
+    #hostname {
+      font-size: 2rem;
+      font-weight: 300;
+      color: #888;
+      margin-bottom: 48px;
+      letter-spacing: 0.06em;
+    }
+
+    #ip-list { margin-bottom: 48px; }
+
+    .ip-addr {
+      font-size: 3.6rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      color: #fff;
+      line-height: 1.25;
+    }
+    .ip-addr.secondary {
+      font-size: 2.2rem;
+      font-weight: 300;
+      color: #aaa;
+    }
+
+    .admin-url {
+      font-size: 1.3rem;
+      color: #e8a020;
+      letter-spacing: 0.04em;
+      margin-bottom: 64px;
+      font-weight: 300;
+    }
+
+    .no-ip {
+      font-size: 1.8rem;
+      font-weight: 300;
+      color: #555;
+      letter-spacing: 0.06em;
+      margin-bottom: 64px;
+    }
+
+    #bar-wrap {
+      width: min(480px, 80vw);
+      margin-bottom: 16px;
+    }
+    #bar-bg {
+      width: 100%; height: 3px;
+      background: #222; border-radius: 2px; overflow: hidden;
+    }
+    #bar-fill {
+      height: 100%; background: #e8a020; border-radius: 2px;
+      width: 100%;
+      transition: width 0.25s linear;
+    }
+    #countdown-label {
+      margin-top: 10px;
+      font-size: 0.85rem;
+      letter-spacing: 0.1em;
+      color: #444;
+    }
+  </style>
+</head>
+<body>
+
+<div id="content">
+  {% if ips %}
+    <div id="hostname">{{ hostname }}</div>
+    <div id="ip-list">
+      <div class="label">IP Address</div>
+      {% for ip in ips %}
+        <div class="ip-addr{% if loop.index > 1 %} secondary{% endif %}">{{ ip }}</div>
+      {% endfor %}
+    </div>
+    <div class="admin-url">http://{{ ips[0] }}:5000/admin</div>
+  {% else %}
+    <div class="no-ip">Connecting&hellip;</div>
+  {% endif %}
+</div>
+
+<div id="bar-wrap">
+  <div id="bar-bg"><div id="bar-fill"></div></div>
+  <div id="countdown-label">Starting in <span id="cd">10</span>s</div>
+</div>
+
+<script>
+'use strict';
+
+const DURATION = 10;
+let elapsed = 0;
+
+document.getElementById('content').classList.add('visible');
+
+function tick() {
+  elapsed += 0.25;
+  const remaining = Math.max(0, DURATION - elapsed);
+  document.getElementById('cd').textContent = Math.ceil(remaining);
+  document.getElementById('bar-fill').style.width = (remaining / DURATION * 100) + '%';
+  if (elapsed >= DURATION) {
+    window.location.replace('/slideshow');
+  } else {
+    setTimeout(tick, 250);
+  }
+}
+
+tick();
+</script>
+</body>
+</html>

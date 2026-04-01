@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <title>{{ site_title }} — Admin</title>
+  <link rel="icon" href="/favicon.ico">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:      #111;
+      --surface: #1c1c1c;
+      --card:    #1a1a1a;
+      --border:  #2e2e2e;
+      --accent:  #e8a020;
+      --text:    #e0e0e0;
+      --muted:   #777;
+      --danger:  #c0392b;
+      --ok:      #27ae60;
+      --r:       8px;
+      --gap:     16px;
+    }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 16px;
+      line-height: 1.5;
+      padding: var(--gap);
+      max-width: 680px;
+      margin: 0 auto;
+    }
+
+    h1 { font-size: 1.2rem; font-weight: 600; color: var(--accent);
+         margin-bottom: 20px; letter-spacing: 0.05em; }
+    h2 { font-size: 0.72rem; font-weight: 600; text-transform: uppercase;
+         letter-spacing: 0.12em; color: var(--muted); margin-bottom: 10px; }
+
+    .section {
+      position: relative;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: var(--gap);
+      margin-bottom: var(--gap);
+    }
+
+    /* ── Section header with optional logo ── */
+    .section-head { margin-bottom: 10px; }
+    #site-logo {
+      position: absolute;
+      right: var(--gap);
+      top: 50%;
+      transform: translateY(-50%);
+      height: 80px;
+      max-width: 140px;
+      object-fit: contain;
+      mix-blend-mode: screen;
+      display: none;
+      pointer-events: none;
+    }
+
+    /* ── Status ── */
+    .stat-grid { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; }
+    .stat-label { font-size: 0.72rem; color: var(--muted); text-transform: uppercase;
+                  letter-spacing: 0.08em; white-space: nowrap; padding-top: 2px; }
+    .stat-value { font-size: 0.95rem; font-weight: 500; word-break: break-word; }
+    .stat-value.mode-main { color: var(--ok); }
+    .stat-value.mode-usb  { color: var(--accent); }
+    .stat-value.mode-prep { color: #e07820; }
+    .stat-value.yes     { color: var(--ok); }
+    .stat-value.no      { color: var(--muted); }
+    .stat-value.running { color: var(--ok); }
+    .stat-value.stopped { color: var(--danger); }
+
+    /* ── Countdown bar ── */
+    .countdown-wrap {
+      margin-top: 10px;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .countdown-bar-bg {
+      flex: 1; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden;
+    }
+    .countdown-bar-fill {
+      height: 100%; background: var(--accent); border-radius: 2px;
+      transition: width 0.2s linear;
+      width: 0%;
+    }
+    .countdown-text {
+      font-size: 0.78rem; color: var(--muted); white-space: nowrap; min-width: 42px; text-align: right;
+    }
+
+    /* ── Buttons ── */
+    .btn {
+      display: block; width: 100%;
+      padding: 14px 10px;
+      background: #2a2a2a;
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      color: var(--text);
+      font-size: 1.1rem;
+      font-family: inherit;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn:active { background: #3a3a3a; }
+    .btn-primary { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 600; }
+    .btn-primary:active { background: #c88010; }
+    .btn-danger  { background: var(--danger); color: #fff; border-color: var(--danger); }
+    .btn-danger:active { background: #a02020; }
+    .btn-sm { display: inline-block; width: auto; padding: 5px 10px; font-size: 0.82rem; }
+    .btn:disabled { opacity: 0.35; pointer-events: none; }
+    .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .controls-transport {
+      display: grid;
+      grid-template-columns: 1fr auto auto 1fr;
+      gap: 8px;
+      align-items: stretch;
+    }
+    .btn-stop  { background: #3a1a1a; border-color: var(--danger); color: var(--danger); }
+    .btn-stop:active  { background: var(--danger); color: #fff; }
+    .btn-start { background: #1a3a1a; border-color: var(--ok); color: var(--ok); }
+    .btn-start:active { background: var(--ok); color: #fff; }
+    .hint { font-size: 0.75rem; color: var(--muted); margin-bottom: 12px; }
+
+    /* ── Upload ── */
+    .upload-row { display: flex; gap: 10px; align-items: stretch; }
+    .upload-row input[type="file"] {
+      flex: 1; min-width: 0;
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--r); color: var(--text);
+      padding: 8px; font-family: inherit; font-size: 0.85rem;
+    }
+    #upload-status { font-size: 0.82rem; margin-top: 8px; min-height: 1.2em; color: var(--muted); }
+    #upload-status.ok  { color: var(--ok); }
+    #upload-status.err { color: var(--danger); }
+
+    /* ── Fade settings ── */
+    .fade-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+    .fade-row:last-child { margin-bottom: 0; }
+    .fade-label { font-size: 0.85rem; width: 70px; flex-shrink: 0; }
+    .fade-row input {
+      width: 80px;
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 4px; color: var(--text);
+      font-size: 0.9rem; padding: 5px 8px;
+      text-align: center; font-family: inherit;
+    }
+    .fade-row input:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+    .fade-unit { font-size: 0.75rem; color: var(--muted); }
+
+    /* ── Playlist cards ── */
+    #playlist-list { margin-top: 12px; }
+    .pl-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 10px 12px;
+      margin-bottom: 8px;
+    }
+    .pl-card.disabled { opacity: 0.45; }
+
+    /* Row 1: position · name · type */
+    .pl-top {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      margin-bottom: 7px;
+      overflow: hidden;
+    }
+    .pl-pos  { flex-shrink: 0; color: var(--muted); font-size: 0.78rem; min-width: 20px; text-align: right; }
+    .pl-name {
+      flex: 1 1 0%;
+      min-width: 0;
+      font-size: 0.88rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .pl-type { flex-shrink: 0; font-size: 0.68rem; color: var(--muted);
+               padding: 1px 5px; border: 1px solid var(--border); border-radius: 3px; }
+
+    /* Row 2: duration · actions */
+    .pl-bottom { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+    .pl-dur { display: flex; align-items: center; gap: 4px; }
+    .pl-dur input {
+      width: 52px;
+      background: #111; border: 1px solid var(--border);
+      border-radius: 4px; color: var(--text);
+      font-size: 0.82rem; padding: 4px 6px;
+      text-align: center; font-family: inherit;
+    }
+    .pl-dur input:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+    .pl-dur-unit { font-size: 0.72rem; color: var(--muted); }
+    .pl-actions { display: flex; gap: 5px; }
+
+    /* ── Preview modal ── */
+    #preview-modal {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.88); z-index: 200;
+      align-items: center; justify-content: center; padding: 20px;
+    }
+    #preview-modal.open { display: flex; }
+    #preview-inner {
+      position: relative; max-width: 90vw; max-height: 90vh;
+      display: flex; flex-direction: column; align-items: center; gap: 12px;
+    }
+    #preview-inner img, #preview-inner video {
+      max-width: 90vw; max-height: 75vh; object-fit: contain; border-radius: 4px;
+    }
+    #preview-close {
+      position: absolute; top: -12px; right: -12px;
+      background: #333; border: 1px solid #555; color: #fff;
+      border-radius: 50%; width: 28px; height: 28px;
+      font-size: 1rem; cursor: pointer; line-height: 28px; text-align: center;
+    }
+
+    .empty { color: var(--muted); font-size: 0.85rem; padding: 12px 0; text-align: center; }
+  </style>
+</head>
+<body>
+
+<h1>Signage Admin</h1>
+
+<!-- Status -->
+<div class="section">
+  <img id="site-logo" src="/branding/logo" alt=""
+    onload="this.style.display='block'"
+    onerror="this.style.display='none'">
+  <div class="section-head">
+    <h2>Status</h2>
+  </div>
+  <div class="stat-grid">
+    <span class="stat-label">Mode</span>     <span class="stat-value" id="s-mode">—</span>
+    <span class="stat-label">Status</span>   <span class="stat-value" id="s-running">—</span>
+    <span class="stat-label">Position</span> <span class="stat-value" id="s-pos">—</span>
+    <span class="stat-label">Playing</span>  <span class="stat-value" id="s-file">—</span>
+  </div>
+  <div class="countdown-wrap">
+    <div class="countdown-bar-bg"><div class="countdown-bar-fill" id="cd-bar"></div></div>
+    <span class="countdown-text" id="cd-text">—</span>
+  </div>
+</div>
+
+<!-- Live controls -->
+<div class="section">
+  <h2>Live Display Control</h2>
+  <div class="controls-transport">
+    <button class="btn" onclick="liveControl('previous')">&#9664; Prev</button>
+    <button class="btn btn-stop"  id="btn-stop"  onclick="liveControl('pause')"  title="Stop">&#9646;&#9646;</button>
+    <button class="btn btn-start" id="btn-start" onclick="liveControl('resume')" title="Start">&#9654;</button>
+    <button class="btn btn-primary" onclick="liveControl('next')">Next &#9654;</button>
+  </div>
+</div>
+
+<!-- Fade settings -->
+<div class="section">
+  <h2>Fade</h2>
+  <div class="fade-row">
+    <span class="fade-label">Fade in</span>
+    <input type="number" id="fade-in" min="0" max="5000" step="100"
+      onchange="saveFade()"
+      onkeydown="if(event.key==='Enter'){saveFade();this.blur();}">
+    <span class="fade-unit">ms</span>
+  </div>
+  <div class="fade-row">
+    <span class="fade-label">Fade out</span>
+    <input type="number" id="fade-out" min="0" max="5000" step="100"
+      onchange="saveFade()"
+      onkeydown="if(event.key==='Enter'){saveFade();this.blur();}">
+    <span class="fade-unit">ms</span>
+  </div>
+</div>
+
+<!-- Playlist -->
+<div class="section">
+  <h2>Playlist</h2>
+  <div class="upload-row">
+    <input type="file" id="file-input" multiple accept=".jpg,.jpeg,.png,.mp4">
+    <button class="btn btn-primary btn-sm" onclick="uploadFiles()">Upload</button>
+  </div>
+  <div id="upload-status"></div>
+  <div id="playlist-list"></div>
+</div>
+
+<!-- USB Override -->
+<div class="section">
+  <h2>USB Override</h2>
+  <div class="stat-grid">
+    <span class="stat-label">Drive</span>      <span class="stat-value" id="u-present">—</span>
+    <span class="stat-label">signage.txt</span> <span class="stat-value" id="u-signage">—</span>
+    <span class="stat-label">Valid</span>       <span class="stat-value" id="u-valid">—</span>
+    <span class="stat-label">Files</span>       <span class="stat-value" id="u-files">—</span>
+  </div>
+  <div style="margin-top:12px;">
+    <button class="btn btn-primary btn-sm" id="btn-import-usb"
+      onclick="importFromUSB()" disabled>Import to Playlist</button>
+    <div id="import-status" style="font-size:0.8rem;margin-top:6px;min-height:1em;color:#777;"></div>
+  </div>
+</div>
+
+<!-- Preview modal -->
+<div id="preview-modal">
+  <div id="preview-inner">
+    <span id="preview-close" onclick="closePreview()">&#x2715;</span>
+    <div id="preview-content"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ── Polling ───────────────────────────────────────────────────────────────────
+
+async function pollStatus() {
+  try {
+    const r = await fetch('/api/status');
+    if (!r.ok) return;
+    updateStatus(await r.json());
+  } catch (_) {}
+}
+
+async function pollPlaylist() {
+  try {
+    const r = await fetch('/api/playlist');
+    if (!r.ok) return;
+    renderPlaylist(await r.json());
+  } catch (_) {}
+}
+
+setInterval(pollStatus,   1500);
+setInterval(pollPlaylist, 3000);
+pollStatus();
+pollPlaylist();
+loadSettings();
+
+// ── Countdown state ───────────────────────────────────────────────────────────
+
+let cdBase = { elapsed_ms: 0, duration: 0, type: 'image', paused: false, ts: Date.now() };
+
+function updateCountdown() {
+  const bar  = document.getElementById('cd-bar');
+  const text = document.getElementById('cd-text');
+  if (!cdBase.duration) { bar.style.width = '0%'; text.textContent = '—'; return; }
+
+  let elapsed_ms = cdBase.elapsed_ms;
+  if (!cdBase.paused) elapsed_ms += (Date.now() - cdBase.ts);
+
+  const total_ms    = cdBase.duration * 1000;
+  const remaining_s = Math.max(0, (total_ms - elapsed_ms) / 1000);
+  const pct         = Math.min(100, (elapsed_ms / total_ms) * 100);
+
+  bar.style.width = pct + '%';
+  text.textContent = remaining_s >= 60
+    ? Math.floor(remaining_s / 60) + 'm ' + (remaining_s % 60).toFixed(0) + 's'
+    : remaining_s.toFixed(1) + 's';
+}
+
+setInterval(updateCountdown, 200);
+
+// ── Status ────────────────────────────────────────────────────────────────────
+
+function updateStatus(s) {
+  const modeMap = {
+    MAIN_PLAYLIST: ['Main Playlist', 'mode-main'],
+    PREPARING_USB: ['Preparing USB\u2026', 'mode-prep'],
+    USB_OVERRIDE:  ['USB Override',  'mode-usb'],
+  };
+  const [label, cls] = modeMap[s.state] || [s.state, ''];
+  const modeEl = document.getElementById('s-mode');
+  modeEl.textContent = label;
+  modeEl.className   = 'stat-value ' + cls;
+
+  const runEl = document.getElementById('s-running');
+  if (s.paused) {
+    runEl.textContent = 'Stopped'; runEl.className = 'stat-value stopped';
+  } else {
+    runEl.textContent = 'Running'; runEl.className = 'stat-value running';
+  }
+
+  document.getElementById('btn-stop').disabled  = s.paused;
+  document.getElementById('btn-start').disabled = !s.paused;
+
+  document.getElementById('s-file').textContent = s.filename || '(none)';
+  document.getElementById('s-pos').textContent  = s.total ? `${s.index} / ${s.total}` : '—';
+
+  cdBase = {
+    elapsed_ms: s.elapsed_ms || 0,
+    duration:   s.duration   || 0,
+    type:       s.type       || 'image',
+    paused:     s.paused     || false,
+    ts:         Date.now(),
+  };
+  updateCountdown();
+
+  yesno('u-present', s.usb.present);
+  yesno('u-signage', s.usb.signage_txt);
+  yesno('u-valid',   s.usb.valid);
+  document.getElementById('u-files').textContent = s.usb.valid ? s.usb.file_count : '—';
+  document.getElementById('btn-import-usb').disabled = !s.usb.present;
+}
+
+function yesno(id, val) {
+  const el = document.getElementById(id);
+  el.textContent = val ? 'Yes' : 'No';
+  el.className   = 'stat-value ' + (val ? 'yes' : 'no');
+}
+
+// ── Playlist ──────────────────────────────────────────────────────────────────
+
+function renderPlaylist(items) {
+  const list = document.getElementById('playlist-list');
+  if (!items.length) {
+    list.innerHTML = '<p class="empty">No items in playlist</p>';
+    return;
+  }
+  list.innerHTML = items.map((item, idx) => {
+    const ext  = item.filename.split('.').pop().toLowerCase();
+    const type = ext === 'mp4' ? 'video' : 'image';
+    const dis  = item.enabled ? '' : ' disabled';
+    const dur  = item.duration || 10;
+    return `<div class="pl-card${dis}" id="card-${item.id}">
+  <div class="pl-top">
+    <span class="pl-pos">${idx + 1}</span>
+    <span class="pl-name" title="${esc(item.original_filename)}">${esc(item.original_filename)}</span>
+    <span class="pl-type">${type}</span>
+  </div>
+  <div class="pl-bottom">
+    <div class="pl-dur">
+      <input type="number" min="1" max="3600" value="${dur}"
+        title="Duration (seconds)"
+        onkeydown="if(event.key==='Enter'){saveDuration(${item.id},this);this.blur();}"
+        onblur="saveDuration(${item.id},this)">
+      <span class="pl-dur-unit">s</span>
+    </div>
+    <div class="pl-actions">
+      <button class="btn btn-sm" onclick="moveItem(${item.id},'up')"   title="Up">&#8593;</button>
+      <button class="btn btn-sm" onclick="moveItem(${item.id},'down')" title="Down">&#8595;</button>
+      <button class="btn btn-sm" onclick="toggleItem(${item.id})"
+        title="${item.enabled ? 'Disable' : 'Enable'}">${item.enabled ? '&#10003;' : '&#9675;'}</button>
+      <button class="btn btn-sm" onclick="previewItem('${esc(item.filename)}','${type}')"
+        title="Preview">&#9654;</button>
+      <button class="btn btn-sm btn-danger" onclick="deleteItem(${item.id},'${esc(item.original_filename)}')"
+        title="Delete">&#10005;</button>
+    </div>
+  </div>
+</div>`;
+  }).join('');
+}
+
+// ── Live controls ─────────────────────────────────────────────────────────────
+
+async function liveControl(dir) {
+  try { await fetch(`/api/control/${dir}`, { method: 'POST' }); } catch (_) {}
+  pollStatus();
+}
+
+// ── Upload ────────────────────────────────────────────────────────────────────
+
+async function uploadFiles() {
+  const input = document.getElementById('file-input');
+  if (!input.files.length) { setUploadMsg('No files selected.', 'err'); return; }
+  const form = new FormData();
+  for (const f of input.files) form.append('files', f);
+  setUploadMsg('Uploading\u2026', '');
+  try {
+    const data = await (await fetch('/api/playlist/upload', { method: 'POST', body: form })).json();
+    if (data.accepted.length) {
+      setUploadMsg('Uploaded: ' + data.accepted.join(', ') +
+        (data.rejected.length ? ' | Rejected: ' + data.rejected.join(', ') : ''), 'ok');
+    } else {
+      setUploadMsg('Rejected (unsupported): ' + data.rejected.join(', '), 'err');
+    }
+    input.value = '';
+    pollPlaylist();
+  } catch (_) { setUploadMsg('Upload failed.', 'err'); }
+}
+
+function setUploadMsg(msg, cls) {
+  const el = document.getElementById('upload-status');
+  el.textContent = msg; el.className = cls;
+}
+
+// ── Item actions ──────────────────────────────────────────────────────────────
+
+async function moveItem(id, dir) {
+  try { await fetch(`/api/playlist/${id}/move/${dir}`, { method: 'POST' }); pollPlaylist(); } catch (_) {}
+}
+
+async function toggleItem(id) {
+  try { await fetch(`/api/playlist/${id}/toggle`, { method: 'POST' }); pollPlaylist(); } catch (_) {}
+}
+
+async function saveDuration(id, el) {
+  const val = parseInt(el.value, 10);
+  if (isNaN(val) || val < 1) { el.value = el.dataset.saved || 10; return; }
+  if (String(val) === el.dataset.saved) return;
+  el.dataset.saved = String(val);
+  try {
+    await fetch(`/api/playlist/${id}/duration`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ duration: val }),
+    });
+  } catch (_) {}
+}
+
+async function deleteItem(id, name) {
+  if (!confirm(`Delete "${name}"?`)) return;
+  try { await fetch(`/api/playlist/${id}`, { method: 'DELETE' }); pollPlaylist(); } catch (_) {}
+}
+
+// ── USB import ────────────────────────────────────────────────────────────────
+
+async function importFromUSB() {
+  const statusEl = document.getElementById('import-status');
+  if (!confirm('This will replace the entire current playlist with files from the USB drive. Continue?')) return;
+  document.getElementById('btn-import-usb').disabled = true;
+  statusEl.textContent = 'Importing\u2026'; statusEl.style.color = '#777';
+  try {
+    const r    = await fetch('/api/playlist/import-usb', { method: 'POST' });
+    const data = await r.json();
+    if (r.ok) {
+      statusEl.textContent = `Imported ${data.imported} file${data.imported !== 1 ? 's' : ''}.`;
+      statusEl.style.color = '#27ae60';
+      pollPlaylist();
+    } else {
+      statusEl.textContent = data.error || 'Import failed.';
+      statusEl.style.color = '#c0392b';
+    }
+  } catch (_) {
+    statusEl.textContent = 'Import failed.';
+    statusEl.style.color = '#c0392b';
+  }
+}
+
+// ── Fade settings ─────────────────────────────────────────────────────────────
+
+async function loadSettings() {
+  try {
+    const s = await (await fetch('/api/settings')).json();
+    document.getElementById('fade-in').value  = s.fade_in_ms  ?? 600;
+    document.getElementById('fade-out').value = s.fade_out_ms ?? 600;
+  } catch (_) {
+    document.getElementById('fade-in').value  = 600;
+    document.getElementById('fade-out').value = 600;
+  }
+}
+
+async function saveFade() {
+  const fadeIn  = Math.max(0, parseInt(document.getElementById('fade-in').value,  10) || 0);
+  const fadeOut = Math.max(0, parseInt(document.getElementById('fade-out').value, 10) || 0);
+  document.getElementById('fade-in').value  = fadeIn;
+  document.getElementById('fade-out').value = fadeOut;
+  try {
+    await fetch('/api/settings', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fade_in_ms: fadeIn, fade_out_ms: fadeOut }),
+    });
+  } catch (_) {}
+}
+
+// ── Preview ───────────────────────────────────────────────────────────────────
+
+function previewItem(filename, type) {
+  const c = document.getElementById('preview-content');
+  c.innerHTML = type === 'video'
+    ? `<video src="/api/preview/main/${filename}" controls autoplay muted style="max-width:85vw;max-height:70vh;"></video>`
+    : `<img src="/api/preview/main/${filename}" style="max-width:85vw;max-height:70vh;">`;
+  document.getElementById('preview-modal').classList.add('open');
+}
+
+function closePreview() {
+  document.getElementById('preview-modal').classList.remove('open');
+  document.getElementById('preview-content').innerHTML = '';
+}
+
+document.getElementById('preview-modal').addEventListener('click', function(e) {
+  if (e.target === this) closePreview();
+});
+
+// ── Util ──────────────────────────────────────────────────────────────────────
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>

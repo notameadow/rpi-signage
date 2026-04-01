@@ -1,0 +1,35 @@
+# Runtime data — never commit
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+venv/
+.venv/
+*.egg-info/
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+*.swp
+*.swo
+
+# Claude Code project settings
+.claude/
+
+# Obsidian / iCloud vault files — not relevant to public users
+memory/
+index.md
+CLAUDE.md
+*.icloud
+
+# Secrets / local overrides
+.env.local
+secrets.py

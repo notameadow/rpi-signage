@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>{{ site_title }}</title>
+  <link rel="icon" href="/favicon.ico">
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; cursor: none; }
+
+    html, body {
+      width: 100vw;
+      height: 100vh;
+      background: #000;
+      overflow: hidden;
+    }
+
+    /* ── Media container ── */
+    #media-wrap {
+      position: absolute;
+      inset: 0;
+    }
+    #media-wrap img,
+    #media-wrap video {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+    }
+
+    /* ── Fallback holding slide ── */
+    #fallback {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      transition: opacity 0.6s ease;
+      pointer-events: none;
+    }
+    #fallback.visible {
+      opacity: 1;
+    }
+    #fallback span {
+      color: rgba(255, 255, 255, 0.45);
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 1.4rem;
+      letter-spacing: 0.35em;
+      text-transform: uppercase;
+      user-select: none;
+    }
+
+    /* ── USB preparing overlay ── */
+    #usb-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.75);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+    }
+    #usb-overlay.visible {
+      display: flex;
+    }
+    #usb-overlay span {
+      color: #fff;
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 2rem;
+      font-weight: 300;
+      letter-spacing: 0.04em;
+    }
+  </style>
+</head>
+<body>
+  <div id="media-wrap"></div>
+
+  <div id="fallback" class="visible">
+    <span>Display ready</span>
+  </div>
+
+  <div id="usb-overlay">
+    <span>Preparing USB content&hellip;</span>
+  </div>
+
+  <script src="/static/js/slideshow.js?v=5"></script>
+</body>
+</html>
