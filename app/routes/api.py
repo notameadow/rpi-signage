@@ -6,7 +6,7 @@ from flask import Blueprint, jsonify, request, current_app, send_from_directory
 from PIL import Image
 
 from app.auth import require_auth
-from app.config import MEDIA_DIR, ALLOWED_EXTENSIONS, LOGO_ICO_PATH, LOGO_PNG_PATH
+from app.config import MEDIA_DIR, ALLOWED_EXTENSIONS, LOGO_ICO_PATH, LOGO_PNG_PATH, THUMB_DIR
 from app import database as db
 from app.usb_monitor import _get_mounts, _scan_root
 
@@ -61,7 +61,14 @@ def control_resume():
 @api_bp.route('/api/playlist')
 @require_auth
 def playlist_list():
-    return jsonify(db.get_full_playlist())
+    items = db.get_full_playlist()
+    for item in items:
+        dur_file = os.path.join(THUMB_DIR, item['filename'] + '.jpg.dur')
+        try:
+            item['video_duration_sec'] = float(open(dur_file).read().strip())
+        except Exception:
+            item['video_duration_sec'] = None
+    return jsonify(items)
 
 
 # ── Playlist — upload ─────────────────────────────────────────────────────────
@@ -103,11 +110,15 @@ def playlist_delete(item_id):
     if not item:
         return jsonify({'error': 'Not found'}), 404
 
-    # Remove file from disk
+    # Remove file and thumbnail from disk
     path = os.path.join(MEDIA_DIR, item['filename'])
     if os.path.exists(path):
         os.remove(path)
         logger.info('Deleted file: %s', item['filename'])
+    for p in [os.path.join(THUMB_DIR, item['filename'] + '.jpg'),
+              os.path.join(THUMB_DIR, item['filename'] + '.jpg.dur')]:
+        if os.path.exists(p):
+            os.remove(p)
 
     db.delete_item(item_id)
     return jsonify({'ok': True})
@@ -171,6 +182,10 @@ def playlist_import_usb():
         path = os.path.join(MEDIA_DIR, fname)
         if os.path.exists(path):
             os.remove(path)
+        for p in [os.path.join(THUMB_DIR, fname + '.jpg'),
+                  os.path.join(THUMB_DIR, fname + '.jpg.dur')]:
+            if os.path.exists(p):
+                os.remove(p)
 
     # Copy USB files into media dir with UUID names and add to DB
     accepted = []

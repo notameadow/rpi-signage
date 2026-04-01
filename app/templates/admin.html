@@ -127,15 +127,29 @@
 
     /* ── Upload ── */
     .upload-row { display: flex; gap: 10px; align-items: stretch; }
-    .upload-row input[type="file"] {
-      flex: 1; min-width: 0;
-      background: var(--card); border: 1px solid var(--border);
-      border-radius: var(--r); color: var(--text);
-      padding: 8px; font-family: inherit; font-size: 0.85rem;
+    .upload-row input[type="file"] { display: none; }
+    .file-label {
+      display: inline-block; width: auto;
+      padding: 5px 10px; font-size: 0.82rem;
+      white-space: nowrap; cursor: pointer;
+    }
+    .file-names {
+      flex: 1; min-width: 0; align-self: center;
+      font-size: 0.82rem; color: var(--muted);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
     #upload-status { font-size: 0.82rem; margin-top: 8px; min-height: 1.2em; color: var(--muted); }
     #upload-status.ok  { color: var(--ok); }
     #upload-status.err { color: var(--danger); }
+    #upload-progress-wrap {
+      display: none; margin-top: 8px;
+      height: 4px; background: var(--border); border-radius: 2px; overflow: hidden;
+    }
+    #upload-progress-wrap.active { display: block; }
+    #upload-progress-fill {
+      height: 100%; width: 0%; background: var(--accent); border-radius: 2px;
+      transition: width 0.1s linear;
+    }
 
     /* ── Fade settings ── */
     .fade-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
@@ -151,6 +165,21 @@
     .fade-row input:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
     .fade-unit { font-size: 0.75rem; color: var(--muted); }
 
+    /* ── Playlist thumbnails ── */
+    .pl-thumb-wrap {
+      position: relative; flex-shrink: 0;
+      width: 56px; height: 56px;
+      border-radius: 4px; overflow: hidden;
+      background: #000;
+    }
+    .pl-thumb { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .pl-thumb-dur {
+      position: absolute; bottom: 2px; right: 3px;
+      background: rgba(0,0,0,0.75); color: #fff;
+      font-size: 0.6rem; font-family: monospace;
+      padding: 1px 3px; border-radius: 2px;
+    }
+
     /* ── Playlist cards ── */
     #playlist-list { margin-top: 12px; }
     .pl-card {
@@ -162,23 +191,20 @@
     }
     .pl-card.disabled { opacity: 0.45; }
 
-    /* Row 1: position · name · type */
+    /* Row 1: info (pos · name · type) + thumbnail */
     .pl-top {
       display: flex;
-      align-items: baseline;
+      align-items: flex-start;
       gap: 8px;
       margin-bottom: 7px;
-      overflow: hidden;
+    }
+    .pl-info {
+      flex: 1; min-width: 0;
+      display: flex; flex-wrap: wrap;
+      align-items: baseline; gap: 2px 8px;
     }
     .pl-pos  { flex-shrink: 0; color: var(--muted); font-size: 0.78rem; min-width: 20px; text-align: right; }
-    .pl-name {
-      flex: 1 1 0%;
-      min-width: 0;
-      font-size: 0.88rem;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
+    .pl-name { font-size: 0.88rem; word-break: break-all; }
     .pl-type { flex-shrink: 0; font-size: 0.68rem; color: var(--muted);
                padding: 1px 5px; border: 1px solid var(--border); border-radius: 3px; }
 
@@ -279,8 +305,11 @@
   <h2>Playlist</h2>
   <div class="upload-row">
     <input type="file" id="file-input" multiple accept=".jpg,.jpeg,.png,.mp4">
+    <label for="file-input" class="btn btn-sm file-label">Choose files</label>
+    <span id="file-names" class="file-names">No files selected</span>
     <button class="btn btn-primary btn-sm" onclick="uploadFiles()">Upload</button>
   </div>
+  <div id="upload-progress-wrap"><div id="upload-progress-fill"></div></div>
   <div id="upload-status"></div>
   <div id="playlist-list"></div>
 </div>
@@ -421,11 +450,20 @@ function renderPlaylist(items) {
     const type = ext === 'mp4' ? 'video' : 'image';
     const dis  = item.enabled ? '' : ' disabled';
     const dur  = item.duration || 10;
+    const durBadge = (type === 'video' && item.video_duration_sec)
+      ? `<span class="pl-thumb-dur">${fmtDur(item.video_duration_sec)}</span>` : '';
     return `<div class="pl-card${dis}" id="card-${item.id}">
   <div class="pl-top">
-    <span class="pl-pos">${idx + 1}</span>
-    <span class="pl-name" title="${esc(item.original_filename)}">${esc(item.original_filename)}</span>
-    <span class="pl-type">${type}</span>
+    <div class="pl-info">
+      <span class="pl-pos">${idx + 1}</span>
+      <span class="pl-name">${esc(item.original_filename)}</span>
+      <span class="pl-type">${type}</span>
+    </div>
+    <div class="pl-thumb-wrap">
+      <img class="pl-thumb" src="/thumbnail/${esc(item.filename)}" loading="lazy"
+        onerror="this.closest('.pl-thumb-wrap').style.display='none'">
+      ${durBadge}
+    </div>
   </div>
   <div class="pl-bottom">
     <div class="pl-dur">
@@ -459,23 +497,51 @@ async function liveControl(dir) {
 
 // ── Upload ────────────────────────────────────────────────────────────────────
 
-async function uploadFiles() {
+function uploadFiles() {
   const input = document.getElementById('file-input');
   if (!input.files.length) { setUploadMsg('No files selected.', 'err'); return; }
   const form = new FormData();
   for (const f of input.files) form.append('files', f);
+
+  const wrap = document.getElementById('upload-progress-wrap');
+  const fill = document.getElementById('upload-progress-fill');
+  wrap.classList.add('active');
+  fill.style.width = '0%';
   setUploadMsg('Uploading\u2026', '');
-  try {
-    const data = await (await fetch('/api/playlist/upload', { method: 'POST', body: form })).json();
-    if (data.accepted.length) {
-      setUploadMsg('Uploaded: ' + data.accepted.join(', ') +
-        (data.rejected.length ? ' | Rejected: ' + data.rejected.join(', ') : ''), 'ok');
-    } else {
-      setUploadMsg('Rejected (unsupported): ' + data.rejected.join(', '), 'err');
+
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', '/api/playlist/upload');
+
+  xhr.upload.onprogress = function(e) {
+    if (e.lengthComputable) {
+      fill.style.width = Math.round((e.loaded / e.total) * 100) + '%';
     }
+  };
+
+  xhr.onload = function() {
+    wrap.classList.remove('active');
+    fill.style.width = '0%';
+    try {
+      const data = JSON.parse(xhr.responseText);
+      if (data.accepted && data.accepted.length) {
+        setUploadMsg('Uploaded: ' + data.accepted.join(', ') +
+          (data.rejected && data.rejected.length ? ' | Rejected: ' + data.rejected.join(', ') : ''), 'ok');
+      } else {
+        setUploadMsg('Rejected (unsupported): ' + (data.rejected || []).join(', '), 'err');
+      }
+    } catch (_) { setUploadMsg('Upload failed.', 'err'); }
     input.value = '';
+    document.getElementById('file-names').textContent = 'No files selected';
     pollPlaylist();
-  } catch (_) { setUploadMsg('Upload failed.', 'err'); }
+  };
+
+  xhr.onerror = function() {
+    wrap.classList.remove('active');
+    fill.style.width = '0%';
+    setUploadMsg('Upload failed.', 'err');
+  };
+
+  xhr.send(form);
 }
 
 function setUploadMsg(msg, cls) {
@@ -580,7 +646,20 @@ document.getElementById('preview-modal').addEventListener('click', function(e) {
   if (e.target === this) closePreview();
 });
 
+document.getElementById('file-input').addEventListener('change', function() {
+  const el = document.getElementById('file-names');
+  if (!this.files.length) { el.textContent = 'No files selected'; return; }
+  el.textContent = this.files.length === 1
+    ? this.files[0].name
+    : `${this.files.length} files selected`;
+});
+
 // ── Util ──────────────────────────────────────────────────────────────────────
+
+function fmtDur(sec) {
+  const s = Math.round(sec);
+  return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+}
 
 function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
