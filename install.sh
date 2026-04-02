@@ -107,7 +107,59 @@ close_on_unmount=1
 EOF
 echo "  OK"
 
-# ── 7. Screen blanking: xset via Xwayland (belt-and-suspenders) ─────────────
+# ── 7. WiFi power save: disable to prevent brcmfmac disassociation/crash ────
+# Pi 4 BCM4345 firmware aggressively sleeps WiFi, causing periodic disconnects
+# and occasional hard hangs. powersave=2 means "disable".
+echo "→ Disabling WiFi power save..."
+NM_CONF="/etc/NetworkManager/NetworkManager.conf"
+if ! grep -q 'wifi\.powersave' "$NM_CONF" 2>/dev/null; then
+    sudo tee -a "$NM_CONF" > /dev/null << 'NMEOF'
+
+[connection]
+wifi.powersave=2
+NMEOF
+    echo "  OK (added to $NM_CONF)"
+else
+    echo "  already configured"
+fi
+
+# ── 8. Captive portal: disable NetworkManager connectivity check ────────────
+# Prevents browser popup on captive-portal networks from interrupting kiosk.
+echo "→ Disabling captive portal check..."
+if ! grep -q '\[connectivity\]' "$NM_CONF" 2>/dev/null; then
+    sudo tee -a "$NM_CONF" > /dev/null << 'NMEOF'
+
+[connectivity]
+enabled=false
+NMEOF
+    echo "  OK (added to $NM_CONF)"
+else
+    echo "  already configured"
+fi
+sudo systemctl reload NetworkManager 2>/dev/null || true
+
+# ── 9. Persistent journal: override Debian volatile default ─────────────────
+# Debian ships 40-rpi-volatile-storage.conf — override with higher-numbered
+# drop-in so crash logs survive reboots. Capped at 50M to protect SD card.
+echo "→ Enabling persistent journal..."
+JOURNAL_DROPIN="/etc/systemd/journald.conf.d/50-persistent.conf"
+if [ ! -f "$JOURNAL_DROPIN" ]; then
+    sudo mkdir -p /etc/systemd/journald.conf.d
+    sudo tee "$JOURNAL_DROPIN" > /dev/null << 'JEOF'
+[Journal]
+Storage=persistent
+SystemMaxUse=50M
+JEOF
+    sudo mkdir -p "/var/log/journal/$(cat /etc/machine-id)"
+    sudo chown root:systemd-journal "/var/log/journal/$(cat /etc/machine-id)"
+    sudo chmod 2755 "/var/log/journal/$(cat /etc/machine-id)"
+    sudo systemctl restart systemd-journald
+    echo "  OK"
+else
+    echo "  already configured"
+fi
+
+# ── 10. Screen blanking: xset via Xwayland (belt-and-suspenders) ────────────
 echo "→ Screen blanking (xset)..."
 DISPLAY=:0 xset s off 2>/dev/null && echo "  xset s off: OK" || echo "  xset s off: skipped"
 DISPLAY=:0 xset s noblank 2>/dev/null || true
