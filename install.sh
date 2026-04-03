@@ -159,7 +159,17 @@ else
     echo "  already configured"
 fi
 
-# ── 10. Screen blanking: xset via Xwayland (belt-and-suspenders) ────────────
+# ── 10. Kiosk watchdog — restarts Chromium on renderer crash ────────────────
+echo "→ Kiosk watchdog service..."
+chmod +x "$INSTALL_DIR/toolchain/kiosk-watchdog.sh"
+mkdir -p "$HOME/.config/systemd/user"
+cp "$INSTALL_DIR/systemd/signage-kiosk-watchdog.service" "$HOME/.config/systemd/user/"
+systemctl --user daemon-reload
+systemctl --user enable signage-kiosk-watchdog
+systemctl --user restart signage-kiosk-watchdog 2>/dev/null || true
+echo "  OK"
+
+# ── 11. Screen blanking: xset via Xwayland (belt-and-suspenders) ────────────
 echo "→ Screen blanking (xset)..."
 DISPLAY=:0 xset s off 2>/dev/null && echo "  xset s off: OK" || echo "  xset s off: skipped"
 DISPLAY=:0 xset s noblank 2>/dev/null || true

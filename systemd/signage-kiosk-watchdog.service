@@ -1,0 +1,14 @@
+[Unit]
+Description=Signage Kiosk Watchdog — restarts Chromium on crash
+After=graphical-session.target signage-app.service
+
+[Service]
+Type=simple
+ExecStart=/home/dev/signage/toolchain/kiosk-watchdog.sh
+Restart=always
+RestartSec=10
+Environment=WAYLAND_DISPLAY=wayland-0
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+
+[Install]
+WantedBy=default.target

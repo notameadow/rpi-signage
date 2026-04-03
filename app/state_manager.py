@@ -13,6 +13,9 @@ class StateManager:
     PREPARING_USB = 'PREPARING_USB'
     USB_OVERRIDE  = 'USB_OVERRIDE'
 
+    AUTO_ADVANCE_INTERVAL = 1.0   # seconds between checks
+    AUTO_ADVANCE_GRACE   = 2.0   # extra seconds before server forces advance
+
     def __init__(self):
         self._lock = threading.RLock()
         self.state = self.MAIN_PLAYLIST
@@ -31,6 +34,11 @@ class StateManager:
         }
         self._load_main_playlist()
         logger.info('StateManager ready — %d items in main playlist', len(self._playlist))
+
+        # Server-side auto-advance: if the client (Chromium) crashes or
+        # stops advancing, the server keeps the playlist cycling.
+        t = threading.Thread(target=self._auto_advance_loop, daemon=True)
+        t.start()
 
     # ------------------------------------------------------------------
     # Internal loaders
@@ -76,6 +84,46 @@ class StateManager:
         if self.paused and self._paused_at is not None:
             return max(0, int((self._paused_at - self._item_started_at) * 1000))
         return max(0, int((time.time() - self._item_started_at) * 1000))
+
+    # ------------------------------------------------------------------
+    # Server-side auto-advance (fallback when client stops responding)
+    # ------------------------------------------------------------------
+
+    def _auto_advance_loop(self):
+        while True:
+            time.sleep(self.AUTO_ADVANCE_INTERVAL)
+            try:
+                self._check_auto_advance()
+            except Exception:
+                logger.exception('auto-advance error')
+
+    def _check_auto_advance(self):
+        with self._lock:
+            if self.paused or not self._playlist:
+                return
+            if self.state == self.PREPARING_USB:
+                return
+
+            item = self._playlist[self.current_index]
+            ext = os.path.splitext(item['filename'])[1].lower()
+            if self.state != self.USB_OVERRIDE:
+                db_dur = item.get('duration', IMAGE_DURATION)
+            else:
+                db_dur = IMAGE_DURATION
+            duration = self._video_duration if self._video_duration is not None else db_dur
+
+            elapsed_s = self._get_elapsed_ms() / 1000.0
+            deadline = duration + self.AUTO_ADVANCE_GRACE
+
+            if elapsed_s >= deadline:
+                old_idx = self.current_index
+                self._refresh()
+                if not self._playlist:
+                    return
+                self.current_index = (self.current_index + 1) % len(self._playlist)
+                self._new_token()
+                logger.info('auto-advance (%.1fs > %.1fs) → index=%d token=%d',
+                            elapsed_s, deadline, self.current_index, self.token)
 
     # ------------------------------------------------------------------
     # Display state (polled by slideshow page — no auth, fast path)
