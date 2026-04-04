@@ -33,4 +33,7 @@ rsync -av --delete \
   "$PROJECT_DIR/" \
   "$RPi_HOST:$REMOTE_DIR/"
 
+# Ensure scripts are executable (rsync from macOS may lose +x)
+ssh -i "$RPi_SSH_KEY" "$RPi_HOST" "chmod +x $REMOTE_DIR/toolchain/*.sh $REMOTE_DIR/install.sh 2>/dev/null" || true
+
 echo "→ Done."

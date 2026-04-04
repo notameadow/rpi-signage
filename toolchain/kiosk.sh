@@ -36,7 +36,6 @@ CHROMIUM_ARGS=(
     --noerrdialogs
     --disable-features=TranslateUI
     --password-store=basic
-    --disable-gpu-compositing
     http://localhost:5000/splash
 )
 

@@ -29,6 +29,15 @@ is_healthy() {
         return 1
     fi
 
+    # Check Chromium memory usage — restart if renderer exceeds 800MB RSS
+    local rss_kb
+    rss_kb=$(ps -eo rss,args 2>/dev/null | awk '/chromium.*--type=renderer/ {sum += $1} END {print sum+0}')
+    if [ "$rss_kb" -gt 819200 ] 2>/dev/null; then
+        local rss_mb=$((rss_kb / 1024))
+        log "UNHEALTHY: Chromium renderer using ${rss_mb}MB RSS (limit 800MB)"
+        return 1
+    fi
+
     return 0
 }
 
