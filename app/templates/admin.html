@@ -341,20 +341,27 @@
 <script>
 'use strict';
 
+// ── Auth-aware fetch ─────────────────────────────────────────────────────────
+async function apiFetch(url, opts) {
+  const r = await fetch(url, opts);
+  if (r.status === 401) { location.href = '/login'; return null; }
+  return r;
+}
+
 // ── Polling ───────────────────────────────────────────────────────────────────
 
 async function pollStatus() {
   try {
-    const r = await fetch('/api/status');
-    if (!r.ok) return;
+    const r = await apiFetch('/api/status');
+    if (!r || !r.ok) return;
     updateStatus(await r.json());
   } catch (_) {}
 }
 
 async function pollPlaylist() {
   try {
-    const r = await fetch('/api/playlist');
-    if (!r.ok) return;
+    const r = await apiFetch('/api/playlist');
+    if (!r || !r.ok) return;
     renderPlaylist(await r.json());
   } catch (_) {}
 }

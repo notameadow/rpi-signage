@@ -9,6 +9,8 @@ from app.config import DATA_DIR, MEDIA_DIR, USB_CACHE_DIR, LOG_FILE
 def create_app():
     app = Flask(__name__, template_folder='templates', static_folder='static')
     app.config['MAX_CONTENT_LENGTH'] = 512 * 1024 * 1024  # 512 MB
+    app.config['SECRET_KEY'] = os.environ.get('SIGNAGE_SECRET', 'rpi-signage-default-key')
+    app.config['PERMANENT_SESSION_LIFETIME'] = 86400 * 30  # 30 days
 
     os.makedirs(MEDIA_DIR, exist_ok=True)
     os.makedirs(USB_CACHE_DIR, exist_ok=True)

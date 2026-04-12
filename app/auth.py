@@ -2,7 +2,7 @@ import time
 import threading
 import functools
 from collections import defaultdict
-from flask import request, Response
+from flask import request, redirect, url_for, session, jsonify
 from app.config import ADMIN_USERNAME, ADMIN_PASSWORD
 
 # ── Brute-force protection ────────────────────────────────────────────────────
@@ -44,29 +44,27 @@ def _record_success(ip):
         _failures.pop(ip, None)
 
 
+def check_credentials(username, password):
+    return username == ADMIN_USERNAME and password == ADMIN_PASSWORD
+
+
 # ── Auth decorator ────────────────────────────────────────────────────────────
 
 def require_auth(f):
     @functools.wraps(f)
     def decorated(*args, **kwargs):
-        ip   = request.remote_addr
-        auth = request.authorization
+        ip = request.remote_addr
 
         if _is_locked_out(ip):
-            return Response(
-                'Too many failed attempts. Try again later.',
-                429,
-                {'Retry-After': str(_LOCKOUT_SECS)},
-            )
+            if request.is_json or request.path.startswith('/api/'):
+                return jsonify({'error': 'Too many failed attempts'}), 429
+            return redirect(url_for('admin.login'))
 
-        if auth and auth.username == ADMIN_USERNAME and auth.password == ADMIN_PASSWORD:
-            _record_success(ip)
+        if session.get('authenticated'):
             return f(*args, **kwargs)
 
-        _record_failure(ip)
-        return Response(
-            'Authentication required.',
-            401,
-            {'WWW-Authenticate': 'Basic realm="Signage Admin"'},
-        )
+        if request.is_json or request.path.startswith('/api/'):
+            return jsonify({'error': 'Not authenticated'}), 401
+
+        return redirect(url_for('admin.login'))
     return decorated
