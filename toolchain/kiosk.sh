@@ -4,17 +4,25 @@
 # or by the kiosk-watchdog when restarting after a crash.
 #
 # Output assignment (Pi 5 has two HDMI ports; Pi 4 has only one):
-#   SIGNAGE_OUTPUT  the wlr-randr output that should display the slideshow
-#                   (default: HDMI-A-1 if present; otherwise the first
-#                   non-NOOP output enumerated by wlr-randr).
-#   BLANK_OUTPUT    a comma-separated list of outputs to force off — the
-#                   Pi 5's second HDMI is reserved for a future playout
-#                   subsystem and must not mirror or echo signage content.
-#                   (default: HDMI-A-2.) Outputs in this list that don't
-#                   exist on the running hardware (e.g. on a Pi 4) are
-#                   skipped silently.
-# Override either via /etc/default/signage-kiosk or by editing the
-# autostart .desktop file's Exec= line.
+#   SIGNAGE_OUTPUT           the wlr-randr output that should display the
+#                             slideshow (default: HDMI-A-1 if present;
+#                             otherwise the first non-NOOP output).
+#   BLANK_OUTPUT             comma-separated list of outputs to force off —
+#                             Pi 5's second HDMI is reserved for a future
+#                             playout subsystem and must not mirror or echo
+#                             signage content. (default: HDMI-A-2.)
+#                             Outputs not present on the hardware are
+#                             skipped silently.
+#   SIGNAGE_OUTPUT_IDENTITY  optional. If set, the connected display on
+#                             SIGNAGE_OUTPUT must match this substring
+#                             (against the Make+Model+Serial header line
+#                             from wlr-randr) or the kiosk refuses to
+#                             render. Use to bind signage to a specific
+#                             physical display so a wrong cable swap
+#                             doesn't redirect content to an unintended
+#                             screen. Default empty = no check.
+# Override via /etc/default/signage-kiosk or by editing the autostart
+# .desktop file's Exec= line.
 
 WAYLAND_DISPLAY_VAL="${WAYLAND_DISPLAY:-wayland-0}"
 XDG_RUNTIME_VAL="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
@@ -64,6 +72,24 @@ done
 
 # Bring up the signage output.
 if grep -qx "$SIGNAGE_OUTPUT" <<<"$PRESENT_OUTPUTS"; then
+    # Optional identity check — refuses to render if SIGNAGE_OUTPUT_IDENTITY
+    # is set and the EDID descriptor doesn't contain the expected substring.
+    if [ -n "${SIGNAGE_OUTPUT_IDENTITY:-}" ]; then
+        # The header line for the matching output looks like:
+        #   HDMI-A-1 "LG Electronics LG TV 0x01010101 (HDMI-A-1)"
+        ACTUAL_HDR=$(run_wlr | awk -v out="$SIGNAGE_OUTPUT" '$1 == out {print; exit}')
+        if ! grep -qF -- "$SIGNAGE_OUTPUT_IDENTITY" <<<"$ACTUAL_HDR"; then
+            echo "[kiosk] REFUSING to render: $SIGNAGE_OUTPUT identity mismatch" >&2
+            echo "[kiosk]   expected substring: $SIGNAGE_OUTPUT_IDENTITY" >&2
+            echo "[kiosk]   actual header:      $ACTUAL_HDR" >&2
+            # Force the output off so we don't accidentally show a Wayland
+            # desktop or last frame on the wrong screen.
+            run_wlr --output "$SIGNAGE_OUTPUT" --off || true
+            exit 1
+        fi
+        echo "[kiosk] identity check passed: $SIGNAGE_OUTPUT matches '$SIGNAGE_OUTPUT_IDENTITY'" >&2
+    fi
+
     WAYLAND_DISPLAY="$WAYLAND_DISPLAY_VAL" XDG_RUNTIME_DIR="$XDG_RUNTIME_VAL" \
         wlopm --on "$SIGNAGE_OUTPUT" 2>/dev/null || true
     # Force 1920x1080. Pi 4's GPU can't drive Chromium at 4K and Pi 5
