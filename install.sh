@@ -174,6 +174,26 @@ echo "→ Screen blanking (xset)..."
 DISPLAY=:0 xset s off 2>/dev/null && echo "  xset s off: OK" || echo "  xset s off: skipped"
 DISPLAY=:0 xset s noblank 2>/dev/null || true
 
+# ── 12. Off-box backup (data → droplet) ─────────────────────────────────────
+# Daily timer + on-demand run from the admin UI. Hostname-namespaced on the
+# droplet so old/new Pis can coexist during a transition without clobbering.
+# Reuses the SSH key at ~/.ssh/id_ed25519_backup (Pi-level outbound credential
+# shared with rpi-lighting; one key per Pi, not per project).
+echo "→ Off-box backup..."
+chmod +x "$INSTALL_DIR/toolchain/pi-backup.sh"
+sudo install -m 0755 "$INSTALL_DIR/toolchain/pi-backup.sh" /usr/local/bin/signage-backup.sh
+sudo cp "$INSTALL_DIR/systemd/signage-backup.service" "$UNIT_DIR/"
+sudo cp "$INSTALL_DIR/systemd/signage-backup.timer"   "$UNIT_DIR/"
+sudo systemctl daemon-reload
+sudo systemctl enable --now signage-backup.timer
+if [ ! -f "$HOME/.ssh/id_ed25519_backup" ]; then
+    echo "  ⚠  No SSH backup key at ~/.ssh/id_ed25519_backup — backups will fail until one"
+    echo "     is generated (ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519_backup -N '') and"
+    echo "     its public half is appended to root@droplet:~/.ssh/authorized_keys."
+else
+    echo "  OK (timer enabled, key present)"
+fi
+
 echo ""
 echo "=== Install complete ==="
 echo ""

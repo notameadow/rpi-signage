@@ -1,7 +1,10 @@
 import os
+import json
 import uuid
 import shutil
+import fcntl
 import logging
+import subprocess
 from flask import Blueprint, jsonify, request, current_app, send_from_directory
 from PIL import Image
 
@@ -9,6 +12,10 @@ from app.auth import require_auth
 from app.config import MEDIA_DIR, ALLOWED_EXTENSIONS, LOGO_ICO_PATH, LOGO_PNG_PATH, THUMB_DIR
 from app import database as db
 from app.usb_monitor import _get_mounts, _scan_root
+
+BACKUP_SCRIPT  = '/usr/local/bin/signage-backup.sh'
+BACKUP_STATE   = '/home/dev/signage/data/backup-state.json'
+BACKUP_LOCK    = '/home/dev/signage/data/.backup.lock'
 
 logger  = logging.getLogger('signage.api')
 api_bp  = Blueprint('api', __name__)
@@ -257,3 +264,67 @@ def branding_logo_upload():
 @require_auth
 def preview_main(filename):
     return send_from_directory(MEDIA_DIR, filename)
+
+
+# ── Off-box backup (data → droplet) ───────────────────────────────────────────
+
+def _backup_running():
+    """Probe the lockfile non-blockingly. True iff some process holds it."""
+    if not os.path.exists(BACKUP_LOCK):
+        return False
+    try:
+        with open(BACKUP_LOCK, 'r+') as f:
+            try:
+                fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+                return False
+            except BlockingIOError:
+                return True
+    except OSError:
+        return False
+
+
+@api_bp.route('/api/backup/status')
+@require_auth
+def backup_status():
+    state = {
+        'running': False,
+        'last_run_at': None,
+        'last_status': 'never',
+        'last_error': None,
+        'last_size_bytes': 0,
+        'last_duration_s': 0,
+        'host': None,
+        'remote': None,
+    }
+    try:
+        with open(BACKUP_STATE) as f:
+            state.update(json.load(f))
+    except (OSError, ValueError):
+        pass
+    # Authoritative running probe via the lockfile — survives crashes that
+    # leave a stale "running":true in the state file.
+    state['running'] = _backup_running()
+    return jsonify(state)
+
+
+@api_bp.route('/api/backup/run', methods=['POST'])
+@require_auth
+def backup_run():
+    if _backup_running():
+        return jsonify({'ok': False, 'error': 'already running'}), 409
+    if not os.path.exists(BACKUP_SCRIPT):
+        return jsonify({'ok': False, 'error': 'backup script not installed'}), 500
+    try:
+        subprocess.Popen(
+            [BACKUP_SCRIPT],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL,
+            start_new_session=True,
+            close_fds=True,
+        )
+    except OSError as e:
+        return jsonify({'ok': False, 'error': f'spawn failed: {e}'}), 500
+    logger.info('Operator-triggered backup started')
+    return jsonify({'ok': True})

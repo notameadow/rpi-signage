@@ -352,6 +352,22 @@
   </div>
 </div>
 
+<div class="section">
+  <h2>Backup</h2>
+  <div class="stat-grid">
+    <span class="stat-label">Last run</span>   <span class="stat-value" id="b-last-run">—</span>
+    <span class="stat-label">Status</span>     <span class="stat-value" id="b-status">—</span>
+    <span class="stat-label">Size</span>       <span class="stat-value" id="b-size">—</span>
+    <span class="stat-label">Duration</span>   <span class="stat-value" id="b-duration">—</span>
+    <span class="stat-label">Destination</span><span class="stat-value" id="b-remote">—</span>
+  </div>
+  <div style="margin-top:12px;">
+    <button class="btn btn-primary btn-sm" id="btn-backup-now"
+      onclick="runBackup()">Backup Now</button>
+    <div id="backup-msg" style="font-size:0.8rem;margin-top:6px;min-height:1em;color:#777;"></div>
+  </div>
+</div>
+
 <!-- Preview modal -->
 <div id="preview-modal">
   <div id="preview-inner">
@@ -725,6 +741,101 @@ async function importFromUSB() {
     statusEl.style.color = '#c0392b';
   }
 }
+
+// ── Backup ───────────────────────────────────────────────────────────────────
+
+let backupPollMs = 30000;  // slow when idle, 2s when running
+let backupTimer  = null;
+
+function fmtBytes(n) {
+  if (!n) return '—';
+  const u = ['B','KB','MB','GB','TB'];
+  let i = 0; let v = n;
+  while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+  return v.toFixed(v >= 100 || i === 0 ? 0 : 1) + ' ' + u[i];
+}
+
+function fmtRelTime(iso) {
+  if (!iso) return '—';
+  const t = new Date(iso).getTime();
+  if (isNaN(t)) return iso;
+  const sec = Math.floor((Date.now() - t) / 1000);
+  if (sec < 60)    return sec + 's ago';
+  if (sec < 3600)  return Math.floor(sec / 60) + 'm ago';
+  if (sec < 86400) return Math.floor(sec / 3600) + 'h ago';
+  return Math.floor(sec / 86400) + 'd ago';
+}
+
+async function pollBackup() {
+  try {
+    const s = await (await fetch('/api/backup/status')).json();
+    const btn = document.getElementById('btn-backup-now');
+    const msg = document.getElementById('backup-msg');
+
+    document.getElementById('b-last-run').textContent  = s.running ? 'running…' : fmtRelTime(s.last_run_at);
+    document.getElementById('b-size').textContent      = fmtBytes(s.last_size_bytes || 0);
+    document.getElementById('b-duration').textContent  = s.last_duration_s ? s.last_duration_s + 's' : '—';
+    document.getElementById('b-remote').textContent    = s.remote || '—';
+
+    const statusEl = document.getElementById('b-status');
+    if (s.running) {
+      statusEl.textContent = 'running';
+      statusEl.style.color = '#e8a020';
+    } else if (s.last_status === 'ok') {
+      statusEl.textContent = 'ok';
+      statusEl.style.color = '#27ae60';
+    } else if (s.last_status === 'error') {
+      statusEl.textContent = 'error';
+      statusEl.style.color = '#c0392b';
+      if (s.last_error) { msg.textContent = s.last_error; msg.style.color = '#c0392b'; }
+    } else {
+      statusEl.textContent = s.last_status || '—';
+      statusEl.style.color = '';
+    }
+
+    btn.disabled = !!s.running;
+    btn.textContent = s.running ? 'Running…' : 'Backup Now';
+
+    // Adaptive cadence: 2s while running, 30s otherwise.
+    const wantMs = s.running ? 2000 : 30000;
+    if (wantMs !== backupPollMs) {
+      backupPollMs = wantMs;
+      if (backupTimer) clearInterval(backupTimer);
+      backupTimer = setInterval(pollBackup, backupPollMs);
+    }
+  } catch (_) {
+    document.getElementById('b-status').textContent = 'unreachable';
+  }
+}
+
+async function runBackup() {
+  const msg = document.getElementById('backup-msg');
+  msg.textContent = 'Starting…'; msg.style.color = '#777';
+  document.getElementById('btn-backup-now').disabled = true;
+  try {
+    const r = await fetch('/api/backup/run', { method: 'POST' });
+    const data = await r.json();
+    if (r.ok) {
+      msg.textContent = ''; msg.style.color = '#777';
+      // Switch to fast polling immediately so the UI catches the running state.
+      if (backupTimer) clearInterval(backupTimer);
+      backupPollMs = 2000;
+      backupTimer = setInterval(pollBackup, backupPollMs);
+      pollBackup();
+    } else {
+      msg.textContent = data.error || 'Failed to start backup.';
+      msg.style.color = '#c0392b';
+      document.getElementById('btn-backup-now').disabled = false;
+    }
+  } catch (_) {
+    msg.textContent = 'Network error.';
+    msg.style.color = '#c0392b';
+    document.getElementById('btn-backup-now').disabled = false;
+  }
+}
+
+backupTimer = setInterval(pollBackup, backupPollMs);
+pollBackup();
 
 // ── Fade settings ─────────────────────────────────────────────────────────────
 

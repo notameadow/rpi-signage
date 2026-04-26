@@ -1,0 +1,11 @@
+[Unit]
+Description=Signage off-box backup (data → droplet)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=dev
+ExecStart=/usr/local/bin/signage-backup.sh
+StandardOutput=journal
+StandardError=journal

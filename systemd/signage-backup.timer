@@ -1,0 +1,11 @@
+[Unit]
+Description=Signage daily off-box backup trigger
+
+[Timer]
+OnCalendar=*-*-* 04:30:00
+RandomizedDelaySec=30m
+Persistent=true
+Unit=signage-backup.service
+
+[Install]
+WantedBy=timers.target
