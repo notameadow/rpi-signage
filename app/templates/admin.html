@@ -846,12 +846,14 @@ function downloadBackup() {
 }
 
 async function runBackup() {
+  console.log('[backup] runBackup() entered');
   const msg = document.getElementById('backup-msg');
   msg.textContent = 'Starting…'; msg.style.color = '#777';
   document.getElementById('btn-backup-now').disabled = true;
   try {
     const r = await fetch('/api/backup/run', { method: 'POST' });
-    const data = await r.json();
+    const data = await r.json().catch(() => ({}));
+    console.log('[backup] /api/backup/run →', r.status, data);
     if (r.ok) {
       msg.textContent = ''; msg.style.color = '#777';
       // Switch to fast polling immediately so the UI catches the running state.
@@ -860,12 +862,13 @@ async function runBackup() {
       backupTimer = setInterval(pollBackup, backupPollMs);
       pollBackup();
     } else {
-      msg.textContent = data.error || 'Failed to start backup.';
+      msg.textContent = `HTTP ${r.status}: ${data.error || 'Failed to start backup.'}`;
       msg.style.color = '#c0392b';
       document.getElementById('btn-backup-now').disabled = false;
     }
-  } catch (_) {
-    msg.textContent = 'Network error.';
+  } catch (e) {
+    console.error('[backup] runBackup error', e);
+    msg.textContent = 'JS error: ' + (e && e.message ? e.message : String(e));
     msg.style.color = '#c0392b';
     document.getElementById('btn-backup-now').disabled = false;
   }

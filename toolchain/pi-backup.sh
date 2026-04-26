@@ -27,10 +27,46 @@
 
 set -euo pipefail
 
-: "${REMOTE_USER:?REMOTE_USER is unset (see /etc/signage-backup.env)}"
-: "${REMOTE_HOST:?REMOTE_HOST is unset (see /etc/signage-backup.env)}"
-: "${REMOTE_PORT:?REMOTE_PORT is unset (see /etc/signage-backup.env)}"
-: "${REMOTE_BASE:?REMOTE_BASE is unset (see /etc/signage-backup.env)}"
+# Source the env file ourselves so the script works whether invoked via
+# systemd (which also has EnvironmentFile=) or directly via subprocess
+# from the Flask app (which inherits a near-empty env from the service).
+ENV_FILE="${SIGNAGE_BACKUP_ENV:-/etc/signage-backup.env}"
+if [ -r "$ENV_FILE" ]; then
+    # shellcheck disable=SC1090
+    set -a; . "$ENV_FILE"; set +a
+fi
+
+DATA_DIR_FOR_BAIL="${DATA_DIR:-/home/dev/signage/data}"
+STATE_FILE_FOR_BAIL="${STATE_FILE:-$DATA_DIR_FOR_BAIL/backup-state.json}"
+
+# Early-bail helper: writes an error state the API/UI can surface, then
+# exits non-zero. Used before the main write_state function is defined
+# (e.g. when required env vars are missing).
+bail_early() {
+    local err_msg="$1"
+    local err_field
+    err_field="\"$(echo "$err_msg" | sed 's/"/\\"/g')\""
+    cat > "$STATE_FILE_FOR_BAIL.tmp" <<EOF
+{
+  "running": false,
+  "started_at": null,
+  "last_run_at": "$(date -Iseconds)",
+  "last_status": "error",
+  "last_error": $err_field,
+  "last_size_bytes": 0,
+  "last_duration_s": 0,
+  "host": "$(hostname -s)"
+}
+EOF
+    mv "$STATE_FILE_FOR_BAIL.tmp" "$STATE_FILE_FOR_BAIL" 2>/dev/null || true
+    echo "$(date -Iseconds)  FAILED: $err_msg" >&2
+    exit 1
+}
+
+[ -n "${REMOTE_USER:-}" ] || bail_early "REMOTE_USER is unset (check $ENV_FILE)"
+[ -n "${REMOTE_HOST:-}" ] || bail_early "REMOTE_HOST is unset (check $ENV_FILE)"
+[ -n "${REMOTE_PORT:-}" ] || bail_early "REMOTE_PORT is unset (check $ENV_FILE)"
+[ -n "${REMOTE_BASE:-}" ] || bail_early "REMOTE_BASE is unset (check $ENV_FILE)"
 REMOTE_KEY="${REMOTE_KEY:-/home/dev/.ssh/id_ed25519_backup}"
 RETAIN_DAYS="${RETAIN_DAYS:-30}"
 

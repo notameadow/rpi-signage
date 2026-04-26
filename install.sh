@@ -185,13 +185,19 @@ sudo install -m 0755 "$INSTALL_DIR/toolchain/pi-backup.sh" /usr/local/bin/signag
 sudo cp "$INSTALL_DIR/systemd/signage-backup.service" "$UNIT_DIR/"
 sudo cp "$INSTALL_DIR/systemd/signage-backup.timer"   "$UNIT_DIR/"
 
-# Install the env example once, root-owned 0600. Operator fills in values.
+# Install the env example once, root:dev 0640. Group-readable by dev so the
+# Flask app (running as dev) can source it when spawning the script directly;
+# other users still can't read it.
 if [ ! -f /etc/signage-backup.env ]; then
-    sudo install -m 0600 -o root -g root \
+    sudo install -m 0640 -o root -g dev \
         "$INSTALL_DIR/systemd/signage-backup.env.example" /etc/signage-backup.env
     echo "  ⚠  /etc/signage-backup.env created from example — fill in REMOTE_USER,"
     echo "     REMOTE_HOST, REMOTE_PORT, REMOTE_BASE before backups will succeed:"
     echo "       sudo \$EDITOR /etc/signage-backup.env"
+else
+    # Ensure perms are correct on existing installs (root:dev 0640).
+    sudo chown root:dev /etc/signage-backup.env
+    sudo chmod 0640 /etc/signage-backup.env
 fi
 
 sudo systemctl daemon-reload
