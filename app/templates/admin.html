@@ -375,6 +375,10 @@
       onclick="runBackup()">Backup Now</button>
     <button class="btn btn-sm" id="btn-backup-download"
       onclick="downloadBackup()">Download Backup</button>
+    <input type="file" id="restore-file-input" accept=".gz,.tar.gz,application/gzip"
+      style="display:none;" onchange="restoreSelected(event)">
+    <button class="btn btn-sm" id="btn-backup-restore"
+      onclick="document.getElementById('restore-file-input').click()">Restore from Backup…</button>
     <div id="backup-msg" style="flex-basis:100%;font-size:0.8rem;margin-top:6px;min-height:1em;color:#777;"></div>
   </div>
 </div>
@@ -846,6 +850,50 @@ function downloadBackup() {
   // Triggers a streaming tar.gz of /home/dev/signage/data/ from the server.
   // Same-origin nav carries the session cookie, so auth works without ceremony.
   window.location = '/api/backup/download';
+}
+
+async function restoreSelected(event) {
+  const inputEl = event.target;
+  const file = inputEl.files && inputEl.files[0];
+  const msg  = document.getElementById('backup-msg');
+  const btn  = document.getElementById('btn-backup-restore');
+  if (!file) return;
+
+  const ok = await themedConfirm(
+    `Restore from "${file.name}" (${fmtBytes(file.size)})?\n\n` +
+    `Current data/ will be moved aside as data.before-restore-<timestamp>/ ` +
+    `and the signage app will restart. The kiosk display will briefly go ` +
+    `blank during the restart.`
+  );
+  if (!ok) { inputEl.value = ''; return; }
+
+  msg.textContent = `Uploading ${file.name}…`;
+  msg.style.color = '#777';
+  btn.disabled = true;
+
+  try {
+    const fd = new FormData();
+    fd.append('backup', file);
+    const r = await fetch('/api/backup/restore', { method: 'POST', body: fd });
+    const data = await r.json().catch(() => ({}));
+    console.log('[backup] /api/backup/restore →', r.status, data);
+    if (r.ok) {
+      msg.textContent =
+        `Restored. App restarts in ${data.restart_in_seconds}s. ` +
+        `Previous data at ${data.pre_restore_backup}.`;
+      msg.style.color = '#27ae60';
+    } else {
+      msg.textContent = `HTTP ${r.status}: ${data.error || 'Restore failed.'}`;
+      msg.style.color = '#c0392b';
+    }
+  } catch (e) {
+    console.error('[backup] restore error', e);
+    msg.textContent = 'JS error: ' + (e && e.message ? e.message : String(e));
+    msg.style.color = '#c0392b';
+  } finally {
+    btn.disabled = false;
+    inputEl.value = '';
+  }
 }
 
 async function runBackup() {

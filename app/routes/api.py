@@ -4,6 +4,7 @@ import uuid
 import shutil
 import fcntl
 import socket
+import tarfile
 import logging
 import subprocess
 from datetime import datetime
@@ -339,6 +340,114 @@ def backup_run():
         return jsonify({'ok': False, 'error': f'spawn failed: {e}'}), 500
     logger.info('Operator-triggered backup started')
     return jsonify({'ok': True})
+
+
+@api_bp.route('/api/backup/restore', methods=['POST'])
+@require_auth
+def backup_restore():
+    """Replace /home/dev/signage/data/ from an uploaded tar.gz.
+
+    The tarball must come from this app's own Download Backup endpoint
+    (top-level entry is `data/`, no symlinks, no parent-directory
+    traversal, no absolute paths).
+
+    Process:
+      1. Validate the archive without touching the filesystem.
+      2. Extract to a staging dir alongside data/.
+      3. Atomically swap: rename current data/ → data.before-restore-<ts>/,
+         then rename staging's data/ → data/.
+      4. Schedule a deferred `systemctl restart signage-app` (2s delay)
+         so this response returns before the app dies.
+
+    The pre-restore data dir is left in place for rollback. Operator
+    cleans it up manually once satisfied.
+    """
+    f = request.files.get('backup')
+    if not f:
+        return jsonify({'ok': False, 'error': 'no file (expected multipart field "backup")'}), 400
+
+    ts = datetime.now().strftime('%Y%m%d-%H%M%S')
+    tmp_tar = f'/tmp/signage-restore-{ts}.tar.gz'
+    f.save(tmp_tar)
+
+    try:
+        # 1. Validate
+        try:
+            with tarfile.open(tmp_tar, 'r:gz') as tar:
+                members = tar.getmembers()
+                if not members:
+                    return jsonify({'ok': False, 'error': 'empty tarball'}), 400
+                for m in members:
+                    name = m.name
+                    if name.startswith('/'):
+                        return jsonify({'ok': False, 'error': f'absolute path in tarball: {name}'}), 400
+                    if '..' in name.split('/'):
+                        return jsonify({'ok': False, 'error': f'path traversal in tarball: {name}'}), 400
+                    if not (name == 'data' or name.startswith('data/')):
+                        return jsonify({'ok': False, 'error': f'tarball entry outside data/: {name}'}), 400
+                    if m.issym() or m.islnk():
+                        return jsonify({'ok': False, 'error': f'symlinks not allowed: {name}'}), 400
+                    if not (m.isfile() or m.isdir()):
+                        return jsonify({'ok': False, 'error': f'unsupported entry type: {name}'}), 400
+        except tarfile.TarError as e:
+            return jsonify({'ok': False, 'error': f'invalid tar.gz: {e}'}), 400
+
+        # 2. Extract to a staging directory.
+        staging_root = f'{SIGNAGE_ROOT}/_restore-{ts}'
+        os.makedirs(staging_root, exist_ok=True)
+        try:
+            with tarfile.open(tmp_tar, 'r:gz') as tar:
+                # Python 3.12+ has the data filter built in; older versions
+                # silently extract anything. Validation above already covers
+                # the threat surface, so a plain extractall is fine here.
+                try:
+                    tar.extractall(path=staging_root, filter='data')  # 3.12+
+                except TypeError:
+                    tar.extractall(path=staging_root)  # older Python
+        except Exception as e:
+            shutil.rmtree(staging_root, ignore_errors=True)
+            return jsonify({'ok': False, 'error': f'extract failed: {e}'}), 500
+
+        staged_data = f'{staging_root}/data'
+        if not os.path.isdir(staged_data):
+            shutil.rmtree(staging_root, ignore_errors=True)
+            return jsonify({'ok': False, 'error': 'tarball did not contain a top-level data/ directory'}), 400
+
+        # 3. Atomic swap.
+        current = f'{SIGNAGE_ROOT}/data'
+        pre_restore = f'{SIGNAGE_ROOT}/data.before-restore-{ts}'
+        try:
+            if os.path.isdir(current):
+                os.rename(current, pre_restore)
+            os.rename(staged_data, current)
+        except OSError as e:
+            # Best-effort rollback if we got partway.
+            if os.path.isdir(pre_restore) and not os.path.isdir(current):
+                try: os.rename(pre_restore, current)
+                except OSError: pass
+            shutil.rmtree(staging_root, ignore_errors=True)
+            return jsonify({'ok': False, 'error': f'swap failed: {e}'}), 500
+
+        shutil.rmtree(staging_root, ignore_errors=True)
+
+        # 4. Deferred restart — fires after this response is delivered.
+        subprocess.Popen(
+            ['bash', '-c', 'sleep 2 && sudo systemctl restart signage-app'],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL,
+            start_new_session=True,
+            close_fds=True,
+        )
+        logger.info('Restore complete from upload; pre-restore data at %s', pre_restore)
+        return jsonify({
+            'ok': True,
+            'pre_restore_backup': pre_restore,
+            'restart_in_seconds': 2,
+        })
+    finally:
+        try: os.remove(tmp_tar)
+        except OSError: pass
 
 
 @api_bp.route('/api/backup/download')
