@@ -92,8 +92,8 @@ if ! flock -n 9; then
 fi
 
 write_state() {
-    # $1=running (true/false), $2=last_status, $3=last_error, $4=last_size_bytes, $5=last_duration_s
-    local running="$1" status="$2" err="$3" size="$4" duration="$5"
+    # $1=running $2=last_status $3=last_error $4=snapshot_bytes $5=duration_s $6=transferred_bytes
+    local running="$1" status="$2" err="$3" size="$4" duration="$5" xferred="${6:-0}"
     local started_at="${STARTED_AT:-null}"
     [ "$started_at" != "null" ] && started_at="\"$started_at\""
     local err_field="null"
@@ -106,6 +106,7 @@ write_state() {
   "last_status": "$status",
   "last_error": $err_field,
   "last_size_bytes": $size,
+  "last_transferred_bytes": $xferred,
   "last_duration_s": $duration,
   "host": "$HOSTNAME_SHORT"
 }
@@ -129,17 +130,18 @@ START_EPOCH="$(date +%s)"
 if [ -f "$STATE_FILE" ]; then
     PREV_STATUS="$(grep -o '"last_status": "[^"]*"' "$STATE_FILE" | sed 's/.*: "\(.*\)"/\1/' || echo unknown)"
     PREV_SIZE="$(grep -o '"last_size_bytes": [0-9]*' "$STATE_FILE" | awk '{print $2}' || echo 0)"
+    PREV_XFER="$(grep -o '"last_transferred_bytes": [0-9]*' "$STATE_FILE" | awk '{print $2}' || echo 0)"
     PREV_DURATION="$(grep -o '"last_duration_s": [0-9.]*' "$STATE_FILE" | awk '{print $2}' || echo 0)"
 else
-    PREV_STATUS="never"; PREV_SIZE=0; PREV_DURATION=0
+    PREV_STATUS="never"; PREV_SIZE=0; PREV_XFER=0; PREV_DURATION=0
 fi
-write_state "true" "$PREV_STATUS" "" "$PREV_SIZE" "$PREV_DURATION"
+write_state "true" "$PREV_STATUS" "" "$PREV_SIZE" "$PREV_DURATION" "$PREV_XFER"
 clear_progress
 
 cleanup_error() {
     local err_msg="$1"
     local elapsed=$(( $(date +%s) - START_EPOCH ))
-    write_state "false" "error" "$err_msg" 0 "$elapsed"
+    write_state "false" "error" "$err_msg" 0 "$elapsed" 0
     clear_progress
     log "FAILED: $err_msg"
     exit 1
@@ -158,15 +160,20 @@ fi
 
 # rsync with progress2; pipe through a parser that writes $PROGRESS_FILE.
 # pipefail makes rsync's exit propagate even though it's the LHS of the pipe.
+# --stats appends a summary block at the end which we'll parse for the
+# actual bytes-transferred figure (distinct from snapshot size).
 set -o pipefail
 RSYNC_ERR=/tmp/signage-backup-rsync-err
+RSYNC_OUT=/tmp/signage-backup-rsync-out
 : > "$RSYNC_ERR"
+: > "$RSYNC_OUT"
 
-if ! stdbuf -oL rsync -a --delete --info=progress2 --outbuf=L \
+if ! stdbuf -oL rsync -a --delete --info=progress2 --outbuf=L --stats \
         -e "ssh ${SSH_OPTS[*]}" \
         --link-dest="$REMOTE_HOST_BASE/$YESTERDAY/" \
         "$DATA_DIR/" \
         "$REMOTE_USER@$REMOTE_HOST:$REMOTE_HOST_BASE/$TODAY/" 2>>"$RSYNC_ERR" \
+    | tee "$RSYNC_OUT" \
     | stdbuf -oL tr '\r' '\n' \
     | while IFS= read -r line; do
         # progress2 lines look like: "    1,234,567  42%  10.50MB/s    0:00:30  (xfr#…)"
@@ -183,6 +190,12 @@ fi
 log "synced signage data"
 clear_progress
 
+# Pull "Total bytes sent" out of the --stats summary. This is what actually
+# went over the wire — distinct from snapshot size and from transferred file
+# size (the latter would count link-dest hits as "transferred" too).
+TRANSFERRED_BYTES=$(awk '/^Total bytes sent:/ { gsub(",", "", $4); print $4; exit }' "$RSYNC_OUT" 2>/dev/null)
+TRANSFERRED_BYTES="${TRANSFERRED_BYTES:-0}"
+
 # Prune old snapshots on the destination (per-host).
 ssh "${SSH_OPTS[@]}" "$REMOTE_USER@$REMOTE_HOST" \
     "cd \"$REMOTE_HOST_BASE\" 2>/dev/null && ls -d ????-??-?? 2>/dev/null | sort -r | awk 'NR>$RETAIN_DAYS' | xargs -r rm -rf" || true
@@ -192,6 +205,6 @@ SIZE_BYTES=$(ssh "${SSH_OPTS[@]}" "$REMOTE_USER@$REMOTE_HOST" \
 SIZE_BYTES="${SIZE_BYTES:-0}"
 
 ELAPSED=$(( $(date +%s) - START_EPOCH ))
-write_state "false" "ok" "" "$SIZE_BYTES" "$ELAPSED"
+write_state "false" "ok" "" "$SIZE_BYTES" "$ELAPSED" "$TRANSFERRED_BYTES"
 
-log "backup complete (size=${SIZE_BYTES}B duration=${ELAPSED}s)"
+log "backup complete (snapshot=${SIZE_BYTES}B transferred=${TRANSFERRED_BYTES}B duration=${ELAPSED}s)"

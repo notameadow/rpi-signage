@@ -297,6 +297,7 @@ def backup_status():
         'last_status': 'never',
         'last_error': None,
         'last_size_bytes': 0,
+        'last_transferred_bytes': 0,
         'last_duration_s': 0,
         'host': None,
         'progress': None,

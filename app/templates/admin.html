@@ -355,10 +355,11 @@
 <div class="section">
   <h2>Backup</h2>
   <div class="stat-grid">
-    <span class="stat-label">Last run</span>   <span class="stat-value" id="b-last-run">—</span>
-    <span class="stat-label">Status</span>     <span class="stat-value" id="b-status">—</span>
-    <span class="stat-label">Size</span>       <span class="stat-value" id="b-size">—</span>
-    <span class="stat-label">Duration</span>   <span class="stat-value" id="b-duration">—</span>
+    <span class="stat-label">Last run</span>     <span class="stat-value" id="b-last-run">—</span>
+    <span class="stat-label">Status</span>       <span class="stat-value" id="b-status">—</span>
+    <span class="stat-label">Snapshot</span>     <span class="stat-value" id="b-size">—</span>
+    <span class="stat-label">Transferred</span>  <span class="stat-value" id="b-transferred">—</span>
+    <span class="stat-label">Duration</span>     <span class="stat-value" id="b-duration">—</span>
   </div>
   <div id="b-progress-wrap" style="display:none;margin-top:12px;">
     <div style="display:flex;justify-content:space-between;font-size:0.8rem;color:#aaa;margin-bottom:4px;">
@@ -782,9 +783,11 @@ async function pollBackup() {
     const btn = document.getElementById('btn-backup-now');
     const msg = document.getElementById('backup-msg');
 
-    document.getElementById('b-last-run').textContent  = s.running ? 'running…' : fmtRelTime(s.last_run_at);
-    document.getElementById('b-size').textContent      = fmtBytes(s.last_size_bytes || 0);
-    document.getElementById('b-duration').textContent  = s.last_duration_s ? s.last_duration_s + 's' : '—';
+    document.getElementById('b-last-run').textContent     = s.running ? 'running…' : fmtRelTime(s.last_run_at);
+    document.getElementById('b-size').textContent         = fmtBytes(s.last_size_bytes || 0);
+    document.getElementById('b-transferred').textContent  =
+      s.last_transferred_bytes != null ? fmtBytes(s.last_transferred_bytes) : '—';
+    document.getElementById('b-duration').textContent     = s.last_duration_s ? s.last_duration_s + 's' : '—';
 
     const statusEl = document.getElementById('b-status');
     if (s.running) {
