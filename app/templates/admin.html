@@ -359,12 +359,22 @@
     <span class="stat-label">Status</span>     <span class="stat-value" id="b-status">—</span>
     <span class="stat-label">Size</span>       <span class="stat-value" id="b-size">—</span>
     <span class="stat-label">Duration</span>   <span class="stat-value" id="b-duration">—</span>
-    <span class="stat-label">Destination</span><span class="stat-value" id="b-remote">—</span>
   </div>
-  <div style="margin-top:12px;">
+  <div id="b-progress-wrap" style="display:none;margin-top:12px;">
+    <div style="display:flex;justify-content:space-between;font-size:0.8rem;color:#aaa;margin-bottom:4px;">
+      <span id="b-progress-text">0%</span>
+      <span id="b-progress-meta">—</span>
+    </div>
+    <div style="height:8px;background:#2a2a2a;border:1px solid var(--border);border-radius:4px;overflow:hidden;">
+      <div id="b-progress-bar" style="height:100%;width:0;background:var(--accent);transition:width 0.3s ease;"></div>
+    </div>
+  </div>
+  <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
     <button class="btn btn-primary btn-sm" id="btn-backup-now"
       onclick="runBackup()">Backup Now</button>
-    <div id="backup-msg" style="font-size:0.8rem;margin-top:6px;min-height:1em;color:#777;"></div>
+    <button class="btn btn-sm" id="btn-backup-download"
+      onclick="downloadBackup()">Download Backup</button>
+    <div id="backup-msg" style="flex-basis:100%;font-size:0.8rem;margin-top:6px;min-height:1em;color:#777;"></div>
   </div>
 </div>
 
@@ -775,7 +785,6 @@ async function pollBackup() {
     document.getElementById('b-last-run').textContent  = s.running ? 'running…' : fmtRelTime(s.last_run_at);
     document.getElementById('b-size').textContent      = fmtBytes(s.last_size_bytes || 0);
     document.getElementById('b-duration').textContent  = s.last_duration_s ? s.last_duration_s + 's' : '—';
-    document.getElementById('b-remote').textContent    = s.remote || '—';
 
     const statusEl = document.getElementById('b-status');
     if (s.running) {
@@ -793,11 +802,33 @@ async function pollBackup() {
       statusEl.style.color = '';
     }
 
+    // Progress bar — visible only while running.
+    const wrap     = document.getElementById('b-progress-wrap');
+    const bar      = document.getElementById('b-progress-bar');
+    const ptxt     = document.getElementById('b-progress-text');
+    const pmeta    = document.getElementById('b-progress-meta');
+    if (s.running && s.progress) {
+      wrap.style.display = '';
+      const pct = Math.max(0, Math.min(100, parseFloat(s.progress.pct) || 0));
+      bar.style.width = pct + '%';
+      ptxt.textContent  = pct.toFixed(0) + '%  '
+        + fmtBytes(s.progress.bytes_done || 0);
+      pmeta.textContent = (s.progress.rate || '') + (s.progress.eta ? '  ETA ' + s.progress.eta : '');
+    } else if (s.running) {
+      // Running but no progress line yet (handshake / mkdir phase).
+      wrap.style.display = '';
+      bar.style.width = '0';
+      ptxt.textContent = 'connecting…';
+      pmeta.textContent = '';
+    } else {
+      wrap.style.display = 'none';
+    }
+
     btn.disabled = !!s.running;
     btn.textContent = s.running ? 'Running…' : 'Backup Now';
 
-    // Adaptive cadence: 2s while running, 30s otherwise.
-    const wantMs = s.running ? 2000 : 30000;
+    // Adaptive cadence: 1s while running for snappy progress, 30s otherwise.
+    const wantMs = s.running ? 1000 : 30000;
     if (wantMs !== backupPollMs) {
       backupPollMs = wantMs;
       if (backupTimer) clearInterval(backupTimer);
@@ -806,6 +837,12 @@ async function pollBackup() {
   } catch (_) {
     document.getElementById('b-status').textContent = 'unreachable';
   }
+}
+
+function downloadBackup() {
+  // Triggers a streaming tar.gz of /home/dev/signage/data/ from the server.
+  // Same-origin nav carries the session cookie, so auth works without ceremony.
+  window.location = '/api/backup/download';
 }
 
 async function runBackup() {
@@ -819,7 +856,7 @@ async function runBackup() {
       msg.textContent = ''; msg.style.color = '#777';
       // Switch to fast polling immediately so the UI catches the running state.
       if (backupTimer) clearInterval(backupTimer);
-      backupPollMs = 2000;
+      backupPollMs = 1000;
       backupTimer = setInterval(pollBackup, backupPollMs);
       pollBackup();
     } else {

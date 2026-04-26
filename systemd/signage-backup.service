@@ -1,11 +1,12 @@
 [Unit]
-Description=Signage off-box backup (data → droplet)
+Description=Signage off-box backup (data → operator-defined destination)
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=oneshot
 User=dev
+EnvironmentFile=/etc/signage-backup.env
 ExecStart=/usr/local/bin/signage-backup.sh
 StandardOutput=journal
 StandardError=journal

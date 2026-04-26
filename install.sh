@@ -174,25 +174,29 @@ echo "→ Screen blanking (xset)..."
 DISPLAY=:0 xset s off 2>/dev/null && echo "  xset s off: OK" || echo "  xset s off: skipped"
 DISPLAY=:0 xset s noblank 2>/dev/null || true
 
-# ── 12. Off-box backup (data → droplet) ─────────────────────────────────────
-# Daily timer + on-demand run from the admin UI. Hostname-namespaced on the
-# droplet so old/new Pis can coexist during a transition without clobbering.
-# Reuses the SSH key at ~/.ssh/id_ed25519_backup (Pi-level outbound credential
-# shared with rpi-lighting; one key per Pi, not per project).
+# ── 12. Off-box backup (data → operator-defined destination) ────────────────
+# Daily timer + on-demand run from the admin UI. Destination is configured
+# in /etc/signage-backup.env (NOT in this repo — operator-specific). Path
+# is hostname-namespaced so old/new Pis can coexist during a transition.
+# SSH key path is settable via REMOTE_KEY in that env file.
 echo "→ Off-box backup..."
 chmod +x "$INSTALL_DIR/toolchain/pi-backup.sh"
 sudo install -m 0755 "$INSTALL_DIR/toolchain/pi-backup.sh" /usr/local/bin/signage-backup.sh
 sudo cp "$INSTALL_DIR/systemd/signage-backup.service" "$UNIT_DIR/"
 sudo cp "$INSTALL_DIR/systemd/signage-backup.timer"   "$UNIT_DIR/"
+
+# Install the env example once, root-owned 0600. Operator fills in values.
+if [ ! -f /etc/signage-backup.env ]; then
+    sudo install -m 0600 -o root -g root \
+        "$INSTALL_DIR/systemd/signage-backup.env.example" /etc/signage-backup.env
+    echo "  ⚠  /etc/signage-backup.env created from example — fill in REMOTE_USER,"
+    echo "     REMOTE_HOST, REMOTE_PORT, REMOTE_BASE before backups will succeed:"
+    echo "       sudo \$EDITOR /etc/signage-backup.env"
+fi
+
 sudo systemctl daemon-reload
 sudo systemctl enable --now signage-backup.timer
-if [ ! -f "$HOME/.ssh/id_ed25519_backup" ]; then
-    echo "  ⚠  No SSH backup key at ~/.ssh/id_ed25519_backup — backups will fail until one"
-    echo "     is generated (ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519_backup -N '') and"
-    echo "     its public half is appended to root@droplet:~/.ssh/authorized_keys."
-else
-    echo "  OK (timer enabled, key present)"
-fi
+echo "  OK (timer enabled; check /etc/signage-backup.env for destination)"
 
 echo ""
 echo "=== Install complete ==="

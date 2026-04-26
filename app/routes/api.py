@@ -3,9 +3,11 @@ import json
 import uuid
 import shutil
 import fcntl
+import socket
 import logging
 import subprocess
-from flask import Blueprint, jsonify, request, current_app, send_from_directory
+from datetime import datetime
+from flask import Blueprint, jsonify, request, current_app, send_from_directory, Response
 from PIL import Image
 
 from app.auth import require_auth
@@ -13,9 +15,11 @@ from app.config import MEDIA_DIR, ALLOWED_EXTENSIONS, LOGO_ICO_PATH, LOGO_PNG_PA
 from app import database as db
 from app.usb_monitor import _get_mounts, _scan_root
 
-BACKUP_SCRIPT  = '/usr/local/bin/signage-backup.sh'
-BACKUP_STATE   = '/home/dev/signage/data/backup-state.json'
-BACKUP_LOCK    = '/home/dev/signage/data/.backup.lock'
+SIGNAGE_ROOT     = '/home/dev/signage'
+BACKUP_SCRIPT    = '/usr/local/bin/signage-backup.sh'
+BACKUP_STATE     = f'{SIGNAGE_ROOT}/data/backup-state.json'
+BACKUP_LOCK      = f'{SIGNAGE_ROOT}/data/.backup.lock'
+BACKUP_PROGRESS  = f'{SIGNAGE_ROOT}/data/.backup-progress'
 
 logger  = logging.getLogger('signage.api')
 api_bp  = Blueprint('api', __name__)
@@ -295,7 +299,7 @@ def backup_status():
         'last_size_bytes': 0,
         'last_duration_s': 0,
         'host': None,
-        'remote': None,
+        'progress': None,
     }
     try:
         with open(BACKUP_STATE) as f:
@@ -305,6 +309,12 @@ def backup_status():
     # Authoritative running probe via the lockfile — survives crashes that
     # leave a stale "running":true in the state file.
     state['running'] = _backup_running()
+    if state['running']:
+        try:
+            with open(BACKUP_PROGRESS) as f:
+                state['progress'] = json.load(f)
+        except (OSError, ValueError):
+            state['progress'] = None
     return jsonify(state)
 
 
@@ -328,3 +338,53 @@ def backup_run():
         return jsonify({'ok': False, 'error': f'spawn failed: {e}'}), 500
     logger.info('Operator-triggered backup started')
     return jsonify({'ok': True})
+
+
+@api_bp.route('/api/backup/download')
+@require_auth
+def backup_download():
+    """Stream a tar.gz of /home/dev/signage/data/ to the client.
+
+    Excludes runtime/transient state (logs, lock, state files, usb_cache).
+    The result is a self-contained snapshot suitable for restoring onto a
+    fresh Pi by extracting into /home/dev/signage/.
+    """
+    proc = subprocess.Popen(
+        [
+            'tar', '-czf', '-',
+            '--exclude=data/usb_cache',
+            '--exclude=data/signage.log',
+            '--exclude=data/signage.log.*',
+            '--exclude=data/.backup.lock',
+            '--exclude=data/.backup-progress',
+            '--exclude=data/backup-state.json',
+            '-C', SIGNAGE_ROOT,
+            'data',
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        stdin=subprocess.DEVNULL,
+    )
+
+    def stream():
+        try:
+            while True:
+                chunk = proc.stdout.read(64 * 1024)
+                if not chunk:
+                    break
+                yield chunk
+        finally:
+            try:
+                proc.stdout.close()
+            except Exception:
+                pass
+            proc.wait()
+
+    host  = socket.gethostname().split('.', 1)[0]
+    stamp = datetime.now().strftime('%Y%m%d-%H%M%S')
+    fname = f'signage-data-{host}-{stamp}.tar.gz'
+    return Response(
+        stream(),
+        mimetype='application/gzip',
+        headers={'Content-Disposition': f'attachment; filename="{fname}"'},
+    )
