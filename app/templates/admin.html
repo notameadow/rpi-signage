@@ -244,6 +244,28 @@
     }
 
     .empty { color: var(--muted); font-size: 0.85rem; padding: 12px 0; text-align: center; }
+
+    /* ── Themed dialog (replaces native prompt/confirm/alert) ── */
+    #themed-dialog {
+      display: none; position: fixed; inset: 0; z-index: 600;
+      background: rgba(0, 0, 0, 0.85);
+      align-items: center; justify-content: center;
+    }
+    #themed-dialog.open { display: flex; }
+    .td-box {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--r); padding: var(--gap);
+      width: 90%; max-width: 360px;
+    }
+    #td-message { font-size: 0.95rem; color: var(--text); margin-bottom: 14px; }
+    #td-input {
+      display: none; width: 100%; padding: 10px;
+      background: #2a2a2a; border: 1px solid var(--border);
+      border-radius: 4px; color: var(--text);
+      font-family: inherit; font-size: 0.95rem;
+      margin-bottom: 14px;
+    }
+    .td-actions { display: flex; gap: 10px; }
   </style>
 </head>
 <body>
@@ -338,8 +360,104 @@
   </div>
 </div>
 
+<!-- Themed dialog (replaces native prompt/confirm/alert) -->
+<div id="themed-dialog">
+  <div class="td-box">
+    <div id="td-message"></div>
+    <input type="text" id="td-input">
+    <div class="td-actions">
+      <button class="btn btn-primary" id="td-ok">OK</button>
+      <button class="btn" id="td-cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <script>
 'use strict';
+
+// ── Themed dialog (replaces native prompt/confirm/alert) ─────────────────────
+
+function themedPrompt(message, defaultVal) {
+  return new Promise(resolve => {
+    const dlg = document.getElementById('themed-dialog');
+    const msg = document.getElementById('td-message');
+    const inp = document.getElementById('td-input');
+    const ok  = document.getElementById('td-ok');
+    const cancel = document.getElementById('td-cancel');
+    msg.textContent = message;
+    inp.style.display = '';
+    inp.value = defaultVal || '';
+    cancel.style.display = '';
+    dlg.classList.add('open');
+    inp.focus(); inp.select();
+    const cleanup = (val) => {
+      dlg.classList.remove('open');
+      ok.onclick = null; cancel.onclick = null; inp.onkeydown = null;
+      resolve(val);
+    };
+    ok.onclick = () => cleanup(inp.value);
+    cancel.onclick = () => cleanup(null);
+    inp.onkeydown = (e) => {
+      if (e.key === 'Enter')  cleanup(inp.value);
+      if (e.key === 'Escape') cleanup(null);
+    };
+  });
+}
+
+function themedConfirm(message) {
+  return new Promise(resolve => {
+    const dlg = document.getElementById('themed-dialog');
+    const msg = document.getElementById('td-message');
+    const inp = document.getElementById('td-input');
+    const ok  = document.getElementById('td-ok');
+    const cancel = document.getElementById('td-cancel');
+    msg.textContent = message;
+    inp.style.display = 'none';
+    cancel.style.display = '';
+    dlg.classList.add('open');
+    ok.focus();
+    const keyHandler = (e) => {
+      if (e.key === 'Escape') cleanup(false);
+      if (e.key === 'Enter')  cleanup(true);
+    };
+    const cleanup = (val) => {
+      dlg.classList.remove('open');
+      ok.onclick = null; cancel.onclick = null;
+      document.removeEventListener('keydown', keyHandler);
+      resolve(val);
+    };
+    ok.onclick = () => cleanup(true);
+    cancel.onclick = () => cleanup(false);
+    document.addEventListener('keydown', keyHandler);
+  });
+}
+
+function themedAlert(message) {
+  return new Promise(resolve => {
+    const dlg = document.getElementById('themed-dialog');
+    const msg = document.getElementById('td-message');
+    const inp = document.getElementById('td-input');
+    const ok  = document.getElementById('td-ok');
+    const cancel = document.getElementById('td-cancel');
+    msg.textContent = message;
+    inp.style.display = 'none';
+    cancel.style.display = 'none';
+    dlg.classList.add('open');
+    ok.focus();
+    const keyHandler = (e) => {
+      if (e.key === 'Escape' || e.key === 'Enter') cleanup();
+    };
+    const cleanup = () => {
+      dlg.classList.remove('open');
+      ok.onclick = null;
+      cancel.style.display = '';
+      document.removeEventListener('keydown', keyHandler);
+      resolve();
+    };
+    ok.onclick = cleanup;
+    document.addEventListener('keydown', keyHandler);
+  });
+}
 
 // ── Auth-aware fetch ─────────────────────────────────────────────────────────
 async function apiFetch(url, opts) {
@@ -580,7 +698,7 @@ async function saveDuration(id, el) {
 }
 
 async function deleteItem(id, name) {
-  if (!confirm(`Delete "${name}"?`)) return;
+  if (!await themedConfirm(`Delete "${name}"?`)) return;
   try { await fetch(`/api/playlist/${id}`, { method: 'DELETE' }); pollPlaylist(); } catch (_) {}
 }
 
@@ -588,7 +706,7 @@ async function deleteItem(id, name) {
 
 async function importFromUSB() {
   const statusEl = document.getElementById('import-status');
-  if (!confirm('This will replace the entire current playlist with files from the USB drive. Continue?')) return;
+  if (!await themedConfirm('This will replace the entire current playlist with files from the USB drive. Continue?')) return;
   document.getElementById('btn-import-usb').disabled = true;
   statusEl.textContent = 'Importing\u2026'; statusEl.style.color = '#777';
   try {
