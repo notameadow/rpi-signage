@@ -67,6 +67,16 @@ NoDisplay=false
 EOF
 echo "  OK (~/.config/autostart/signage-kiosk.desktop)"
 
+# ── 3a. Kiosk output assignment (matters on Pi 5 only) ──────────────────────
+# /etc/default/signage-kiosk lets the operator pin which HDMI port shows
+# signage and which is force-off'd. Pi 4 ignores it (single HDMI; kiosk.sh
+# auto-falls-back to whatever's present).
+if [ ! -f /etc/default/signage-kiosk ]; then
+    sudo install -m 0644 -o root -g root \
+        "$INSTALL_DIR/systemd/signage-kiosk.env.example" /etc/default/signage-kiosk
+    echo "  /etc/default/signage-kiosk created (defaults: SIGNAGE_OUTPUT=HDMI-A-1, BLANK_OUTPUT=HDMI-A-2)"
+fi
+
 # ── 4. Cursor: set to 1px so it is effectively invisible ────────────────────
 echo "→ Cursor size..."
 ENV_FILE="$HOME/.config/labwc/environment"
